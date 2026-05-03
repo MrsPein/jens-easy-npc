@@ -566,12 +566,20 @@ Make portraitPrompt very detailed with exact appearance, clothing matching wealt
             const id = await ir.json();
             imageDataUrl = `data:image/png;base64,${id.data?.[0]?.b64_json}`;
           } else {
-            const ir = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${imageKey}`, {
+            // Use Gemini 2.5 Flash Image (free tier, 500/day)
+            const ir = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${imageKey}`, {
               method:"POST", headers:{"Content-Type":"application/json"},
-              body: JSON.stringify({instances:[{prompt:npcData.portraitPrompt}],parameters:{sampleCount:1,aspectRatio:"1:1",personGeneration:"allow_adult",safetyFilterLevel:"block_few"}})
+              body: JSON.stringify({
+                contents:[{parts:[{text: npcData.portraitPrompt + ", fantasy portrait style, highly detailed, painterly illustration"}]}],
+                generationConfig:{responseModalities:["IMAGE","TEXT"]}
+              })
             });
             const id = await ir.json();
-            imageDataUrl = `data:image/png;base64,${id.predictions?.[0]?.bytesBase64Encoded}`;
+            console.log("NPC Forge | Gemini response:", JSON.stringify(id).substring(0,300));
+            const imgPart = id.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+            if (imgPart?.inlineData?.data) {
+              imageDataUrl = `data:${imgPart.inlineData.mimeType||"image/png"};base64,${imgPart.inlineData.data}`;
+            }
           }
           if (imageDataUrl && !imageDataUrl.includes("undefined")) {
             const res = await fetch(imageDataUrl);
