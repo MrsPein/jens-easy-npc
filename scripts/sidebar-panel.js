@@ -1,4 +1,4 @@
-// sidebar-panel.js – NPC Forge sidebar panel (Foundry v13)
+// sidebar-panel.js – NPC Forge sidebar panel (Foundry v13 compatible)
 
 import { getRaceDatabase, getClassDatabase, saveRaceDatabase, saveClassDatabase, getSetting } from "./settings.js";
 import { extractRaceFromText, extractRaceFromImageBase64, generateNPC, buildPortraitPrompt } from "./claude-api.js";
@@ -8,18 +8,17 @@ import { searchFoundryContent, getBackgrounds } from "./foundry-browser.js";
 
 export class NpcForgeSidebar extends Application {
   static get defaultOptions() {
-    return mergeObject(super.defaultOptions, {
+    return foundry.utils.mergeObject(super.defaultOptions, {
       id: "npc-forge-sidebar",
       title: "NPC Forge",
       template: "modules/npc-forge/templates/sidebar.html",
-      width: 320,
-      height: 700,
+      width: 340,
+      height: 720,
       resizable: true,
       classes: ["npc-forge-app"]
     });
   }
 
-  // Active tab state
   _activeTab = "create";
   _searchTimers = {};
   _npcParams = {};
@@ -34,231 +33,239 @@ export class NpcForgeSidebar extends Application {
     };
   }
 
+  // v13: render returns element, not jQuery
+  async _renderHTML(context, options) {
+    // Use v13 renderTemplate API
+    const html = await foundry.applications.handlebars.renderTemplate(
+      this.options.template, context
+    );
+    return html;
+  }
+
   activateListeners(html) {
     super.activateListeners(html);
 
+    // v13: html might be HTMLElement or jQuery – normalize to querySelector
+    const root = html instanceof HTMLElement ? html : html[0];
+
     // Tab switching
-    html.find(".npcforge-tab").on("click", e => {
-      this._activeTab = e.currentTarget.dataset.tab;
-      html.find(".npcforge-tab").removeClass("active");
-      html.find(".npcforge-panel").removeClass("active");
-      e.currentTarget.classList.add("active");
-      html.find(`.npcforge-panel[data-tab="${this._activeTab}"]`).addClass("active");
+    root.querySelectorAll(".npcforge-tab").forEach(tab => {
+      tab.addEventListener("click", e => {
+        this._activeTab = e.currentTarget.dataset.tab;
+        root.querySelectorAll(".npcforge-tab").forEach(t => t.classList.remove("active"));
+        root.querySelectorAll(".npcforge-panel").forEach(p => p.classList.remove("active"));
+        e.currentTarget.classList.add("active");
+        root.querySelector(`.npcforge-panel[data-tab="${this._activeTab}"]`)?.classList.add("active");
+      });
     });
 
-    // ── CREATE TAB ──────────────────────────────────────────────────────────
-
     // Wealth chips
-    html.find(".npcforge-chip[data-group='wealth']").on("click", e => {
-      html.find(".npcforge-chip[data-group='wealth']").removeClass("selected");
-      e.currentTarget.classList.add("selected");
-      this._npcParams.wealth = e.currentTarget.dataset.value;
+    root.querySelectorAll(".npcforge-chip[data-group='wealth']").forEach(chip => {
+      chip.addEventListener("click", e => {
+        root.querySelectorAll(".npcforge-chip[data-group='wealth']").forEach(c => c.classList.remove("selected"));
+        e.currentTarget.classList.add("selected");
+        this._npcParams.wealth = e.currentTarget.dataset.value;
+      });
     });
 
     // Age chips
-    html.find(".npcforge-chip[data-group='age']").on("click", e => {
-      html.find(".npcforge-chip[data-group='age']").removeClass("selected");
-      e.currentTarget.classList.add("selected");
-      this._npcParams.age = e.currentTarget.dataset.value;
+    root.querySelectorAll(".npcforge-chip[data-group='age']").forEach(chip => {
+      chip.addEventListener("click", e => {
+        root.querySelectorAll(".npcforge-chip[data-group='age']").forEach(c => c.classList.remove("selected"));
+        e.currentTarget.classList.add("selected");
+        this._npcParams.age = e.currentTarget.dataset.value;
+      });
     });
 
     // Gender chips
-    html.find(".npcforge-chip[data-group='gender']").on("click", e => {
-      html.find(".npcforge-chip[data-group='gender']").removeClass("selected");
-      e.currentTarget.classList.add("selected");
-      this._npcParams.gender = e.currentTarget.dataset.value;
+    root.querySelectorAll(".npcforge-chip[data-group='gender']").forEach(chip => {
+      chip.addEventListener("click", e => {
+        root.querySelectorAll(".npcforge-chip[data-group='gender']").forEach(c => c.classList.remove("selected"));
+        e.currentTarget.classList.add("selected");
+        this._npcParams.gender = e.currentTarget.dataset.value;
+      });
     });
 
-    // Race search
-    this._setupSearch(html, "race-search", "race-results", async (q) => {
-      const races = getRaceDatabase().filter(r =>
-        r.name.toLowerCase().includes(q.toLowerCase())
-      );
+    // Search fields
+    this._setupSearch(root, "race-search", "race-results", async (q) => {
+      const races = getRaceDatabase().filter(r => r.name.toLowerCase().includes(q.toLowerCase()));
+      if (!races.length) return `<div class="npcforge-no-results">No races found</div>`;
       return races.map(r => `<div class="npcforge-result-item" data-id="${r.id}" data-type="race">
-        <span class="item-name">${r.name}</span>
-        <span class="item-source">${r.source ?? ""}</span>
-      </div>`).join("") || "<div class='npcforge-no-results'>No races found</div>";
+        <span class="item-name">${r.name}</span><span class="item-source">${r.source ?? ""}</span>
+      </div>`).join("");
     });
 
-    // Class search
-    this._setupSearch(html, "class-search", "class-results", async (q) => {
-      const classes = getClassDatabase().filter(c =>
-        c.name.toLowerCase().includes(q.toLowerCase())
-      );
+    this._setupSearch(root, "class-search", "class-results", async (q) => {
+      const classes = getClassDatabase().filter(c => c.name.toLowerCase().includes(q.toLowerCase()));
+      if (!classes.length) return `<div class="npcforge-no-results">No classes found</div>`;
       return classes.map(c => `<div class="npcforge-result-item" data-id="${c.id}" data-type="class">
         <span class="item-name">${c.name}</span>
-      </div>`).join("") || "<div class='npcforge-no-results'>No classes found</div>";
+      </div>`).join("");
     });
 
-    // Background search (from Foundry folders)
-    this._setupSearch(html, "bg-search", "bg-results", async (q) => {
+    this._setupSearch(root, "bg-search", "bg-results", async (q) => {
       if (q.length < 1) return "";
       const results = await getBackgrounds(q);
+      if (!results.length) return `<div class="npcforge-no-results">No backgrounds found</div>`;
       return results.map(r => `<div class="npcforge-result-item" data-name="${r.name}" data-type="background">
-        <span class="item-name">${r.name}</span>
-        <span class="item-source">${r.source ?? ""}</span>
-      </div>`).join("") || "<div class='npcforge-no-results'>No backgrounds found</div>";
-    });
-
-    // Occupation search (Foundry items + freetext)
-    this._setupSearch(html, "occ-search", "occ-results", async (q) => {
-      const results = await searchFoundryContent(q, [], 20);
-      const common = ["Blacksmith", "Innkeeper", "Guard", "Merchant", "Farmer",
-        "Apothecary", "Scholar", "Sailor", "Thief", "Priest",
-        "Hunter", "Herbalist", "Cook", "Cartographer", "Scribe"
-      ].filter(o => o.toLowerCase().includes(q.toLowerCase()));
-
-      const items = results.map(r => `<div class="npcforge-result-item" data-name="${r.name}" data-type="occupation">
         <span class="item-name">${r.name}</span><span class="item-source">${r.source ?? ""}</span>
-      </div>`);
-      const commons = common.map(o => `<div class="npcforge-result-item" data-name="${o}" data-type="occupation">
-        <span class="item-name">${o}</span><span class="item-source">Common</span>
-      </div>`);
-
-      return [...new Set([...commons, ...items])].slice(0, 20).join("") || "";
+      </div>`).join("");
     });
 
-    // Result item clicks – select into params
-    html.on("click", ".npcforge-result-item", e => {
-      const el = e.currentTarget;
-      const type = el.dataset.type;
-      const name = el.dataset.name ?? el.querySelector(".item-name")?.textContent;
-      this._selectParam(html, type, name, el.dataset.id);
+    this._setupSearch(root, "occ-search", "occ-results", async (q) => {
+      const common = ["Blacksmith","Innkeeper","Guard","Merchant","Farmer","Apothecary",
+        "Scholar","Sailor","Thief","Priest","Hunter","Herbalist","Cook","Cartographer","Scribe"
+      ].filter(o => o.toLowerCase().includes(q.toLowerCase()));
+      return common.map(o => `<div class="npcforge-result-item" data-name="${o}" data-type="occupation">
+        <span class="item-name">${o}</span><span class="item-source">Common</span>
+      </div>`).join("") || `<div class="npcforge-no-results">Type to search...</div>`;
+    });
+
+    // Result item clicks
+    root.addEventListener("click", e => {
+      const item = e.target.closest(".npcforge-result-item");
+      if (!item) return;
+      const type = item.dataset.type;
+      const name = item.dataset.name ?? item.querySelector(".item-name")?.textContent;
+      this._selectParam(root, type, name, item.dataset.id);
     });
 
     // Generate button
-    html.find(".npcforge-generate-btn").on("click", () => this._generateNPC(html));
-
-    // ── RACES TAB ───────────────────────────────────────────────────────────
+    root.querySelector(".npcforge-generate-btn")?.addEventListener("click", () => this._generateNPC(root));
 
     // Drop zone
-    const dropzone = html.find(".npcforge-dropzone")[0];
+    const dropzone = root.querySelector(".npcforge-dropzone");
     if (dropzone) {
       dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("drag-over"); });
       dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag-over"));
       dropzone.addEventListener("drop", e => {
         e.preventDefault();
         dropzone.classList.remove("drag-over");
-        this._handleFileDrop(e.dataTransfer.files, html);
+        this._handleFileDrop(e.dataTransfer.files, root);
       });
       dropzone.addEventListener("click", () => {
         const input = document.createElement("input");
         input.type = "file";
         input.multiple = true;
         input.accept = ".pdf,.txt,.png,.jpg,.jpeg,.webp";
-        input.onchange = () => this._handleFileDrop(input.files, html);
+        input.onchange = () => this._handleFileDrop(input.files, root);
         input.click();
       });
     }
 
-    // Text import
-    html.find(".npcforge-import-text-btn").on("click", () => {
-      const text = html.find(".npcforge-import-textarea").val();
-      if (text?.trim()) this._importFromText(text.trim(), "race", html);
+    // Text import buttons
+    root.querySelector(".npcforge-import-text-btn")?.addEventListener("click", () => {
+      const text = root.querySelector(".npcforge-import-textarea")?.value;
+      if (text?.trim()) this._importFromText(text.trim(), "race", root);
     });
 
-    // Delete race entry
-    html.on("click", ".npcforge-entry-delete", async e => {
+    root.querySelector(".npcforge-import-class-btn")?.addEventListener("click", () => {
+      const text = root.querySelector(".npcforge-class-textarea")?.value;
+      if (text?.trim()) this._importFromText(text.trim(), "class", root);
+    });
+
+    // Delete entry buttons
+    root.addEventListener("click", async e => {
+      const del = e.target.closest(".npcforge-entry-delete");
+      if (!del) return;
       e.stopPropagation();
-      const id = e.currentTarget.closest(".npcforge-entry").dataset.id;
-      const db = getRaceDatabase().filter(r => r.id !== id);
-      await saveRaceDatabase(db);
-      this.render();
+      const id = del.closest(".npcforge-entry")?.dataset.id;
+      if (id) {
+        const db = getRaceDatabase().filter(r => r.id !== id);
+        await saveRaceDatabase(db);
+        this.render();
+      }
     });
 
-    // ── CLASSES TAB ─────────────────────────────────────────────────────────
-
-    html.find(".npcforge-import-class-btn").on("click", () => {
-      const text = html.find(".npcforge-class-textarea").val();
-      if (text?.trim()) this._importFromText(text.trim(), "class", html);
-    });
-
-    // ── SETTINGS TAB ────────────────────────────────────────────────────────
-
-    html.find(".npcforge-save-settings").on("click", async () => {
-      const anthropicKey = html.find("[name='anthropicKey']").val();
-      const imageProvider = html.find("[name='imageProvider']").val();
-      const imageKey = html.find("[name='imageApiKey']").val();
-      await game.settings.set("npc-forge", "anthropicKey", anthropicKey);
-      await game.settings.set("npc-forge", "imageProvider", imageProvider);
-      await game.settings.set("npc-forge", "imageApiKey", imageKey);
-      ui.notifications.info("NPC Forge: Settings saved.");
+    // Settings save
+    root.querySelector(".npcforge-save-settings")?.addEventListener("click", async () => {
+      const anthropicKey = root.querySelector("[name='anthropicKey']")?.value;
+      const imageProvider = root.querySelector("[name='imageProvider']")?.value;
+      const imageKey = root.querySelector("[name='imageApiKey']")?.value;
+      if (anthropicKey) await game.settings.set("npc-forge", "anthropicKey", anthropicKey);
+      if (imageProvider) await game.settings.set("npc-forge", "imageProvider", imageProvider);
+      if (imageKey) await game.settings.set("npc-forge", "imageApiKey", imageKey);
+      ui.notifications.info("NPC Forge: Settings saved!");
     });
   }
 
-  // ── Search helper ─────────────────────────────────────────────────────────
+  _setupSearch(root, inputId, resultsId, fetchFn) {
+    const input = root.querySelector(`#${inputId}`);
+    const results = root.querySelector(`#${resultsId}`);
+    if (!input || !results) return;
 
-  _setupSearch(html, inputId, resultsId, fetchFn) {
-    const input = html.find(`#${inputId}`);
-    const results = html.find(`#${resultsId}`);
-    input.on("input", () => {
+    input.addEventListener("input", () => {
       clearTimeout(this._searchTimers[inputId]);
       this._searchTimers[inputId] = setTimeout(async () => {
-        const q = input.val().trim();
-        if (q.length < 1) { results.hide().html(""); return; }
-        const html2 = await fetchFn(q);
-        results.html(html2).show();
+        const q = input.value.trim();
+        if (q.length < 1) { results.style.display = "none"; results.innerHTML = ""; return; }
+        results.innerHTML = await fetchFn(q);
+        results.style.display = "block";
       }, 200);
     });
-    input.on("blur", () => setTimeout(() => results.hide(), 200));
+
+    input.addEventListener("blur", () => {
+      setTimeout(() => { results.style.display = "none"; }, 200);
+    });
   }
 
-  _selectParam(html, type, name, id) {
+  _selectParam(root, type, name, id) {
     if (type === "race") {
       this._npcParams.raceId = id;
       this._npcParams.raceName = name;
-      html.find("#race-search").val(name);
-      html.find("#race-results").hide();
+      const inp = root.querySelector("#race-search");
+      if (inp) inp.value = name;
+      root.querySelector("#race-results").style.display = "none";
     } else if (type === "class") {
       this._npcParams.classId = id;
       this._npcParams.className = name;
-      html.find("#class-search").val(name);
-      html.find("#class-results").hide();
+      const inp = root.querySelector("#class-search");
+      if (inp) inp.value = name;
+      root.querySelector("#class-results").style.display = "none";
     } else if (type === "background") {
       this._npcParams.background = name;
-      html.find("#bg-search").val(name);
-      html.find("#bg-results").hide();
+      const inp = root.querySelector("#bg-search");
+      if (inp) inp.value = name;
+      root.querySelector("#bg-results").style.display = "none";
     } else if (type === "occupation") {
       this._npcParams.occupation = name;
-      html.find("#occ-search").val(name);
-      html.find("#occ-results").hide();
+      const inp = root.querySelector("#occ-search");
+      if (inp) inp.value = name;
+      root.querySelector("#occ-results").style.display = "none";
     }
   }
 
-  // ── Import ────────────────────────────────────────────────────────────────
-
-  async _handleFileDrop(files, html) {
+  async _handleFileDrop(files, root) {
     for (const file of files) {
       const ext = file.name.split(".").pop().toLowerCase();
-      if (["png", "jpg", "jpeg", "webp"].includes(ext)) {
-        await this._importFromImage(file, html);
+      if (["png","jpg","jpeg","webp"].includes(ext)) {
+        await this._importFromImage(file, root);
       } else if (ext === "pdf") {
-        await this._importFromPDF(file, html);
+        await this._importFromPDF(file, root);
       } else if (ext === "txt") {
         const text = await file.text();
-        await this._importFromText(text, "race", html);
+        await this._importFromText(text, "race", root);
       }
     }
   }
 
-  async _importFromImage(file, html) {
-    this._setStatus(html, "Analysing image with Claude...", "running");
+  async _importFromImage(file, root) {
+    this._setStatus(root, "Analysing image with Claude...", "running");
     try {
       const b64 = await fileToBase64(file);
-      const mimeType = file.type || "image/png";
-      const card = await extractRaceFromImageBase64(b64, mimeType);
-      await this._showCardPreview(card, "race", html);
+      const card = await extractRaceFromImageBase64(b64, file.type || "image/png");
+      await this._saveCard(card, "race", root);
     } catch(e) {
-      this._setStatus(html, `Error: ${e.message}`, "error");
+      this._setStatus(root, `Error: ${e.message}`, "error");
     }
   }
 
-  async _importFromPDF(file, html) {
-    this._setStatus(html, "Reading PDF...", "running");
+  async _importFromPDF(file, root) {
+    this._setStatus(root, "Reading PDF...", "running");
     try {
-      // Use PDF.js (bundled with Foundry) to extract text
       const arrayBuffer = await file.arrayBuffer();
-      const pdfjsLib = globalThis.pdfjsLib ?? await import("/scripts/pdfjs/pdf.min.js");
+      const pdfjsLib = globalThis.pdfjsLib;
+      if (!pdfjsLib) throw new Error("PDF.js not available. Please paste text instead.");
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       let fullText = "";
       for (let i = 1; i <= Math.min(pdf.numPages, 20); i++) {
@@ -266,58 +273,47 @@ export class NpcForgeSidebar extends Application {
         const content = await page.getTextContent();
         fullText += content.items.map(s => s.str).join(" ") + "\n";
       }
-      await this._importFromText(fullText, "race", html);
+      await this._importFromText(fullText, "race", root);
     } catch(e) {
-      this._setStatus(html, `PDF error: ${e.message}`, "error");
+      this._setStatus(root, `PDF error: ${e.message}`, "error");
     }
   }
 
-  async _importFromText(text, type, html) {
-    this._setStatus(html, `Analysing with Claude...`, "running");
+  async _importFromText(text, type, root) {
+    this._setStatus(root, "Analysing with Claude...", "running");
     try {
-      const { extractRaceFromText } = await import("./claude-api.js");
       const card = await extractRaceFromText(text);
-      await this._showCardPreview(card, type, html);
+      await this._saveCard(card, type, root);
     } catch(e) {
-      this._setStatus(html, `Error: ${e.message}`, "error");
+      this._setStatus(root, `Error: ${e.message}`, "error");
     }
   }
 
-  async _showCardPreview(card, type, html) {
-    // Save to database
-    card.id = randomID();
+  async _saveCard(card, type, root) {
+    card.id = foundry.utils.randomID();
     card.isHomebrew = true;
-
     if (type === "race") {
       const db = getRaceDatabase();
       db.push(card);
       await saveRaceDatabase(db);
-      this._setStatus(html, `Race "${card.name}" imported!`, "success");
+      this._setStatus(root, `Race "${card.name}" imported!`, "success");
     } else {
       const db = getClassDatabase();
       db.push(card);
       await saveClassDatabase(db);
-      this._setStatus(html, `Class "${card.name}" imported!`, "success");
+      this._setStatus(root, `Class "${card.name}" imported!`, "success");
     }
     this.render();
   }
 
-  // ── NPC Generation ────────────────────────────────────────────────────────
-
-  async _generateNPC(html) {
-    const btn = html.find(".npcforge-generate-btn");
-    btn.prop("disabled", true);
+  async _generateNPC(root) {
+    const btn = root.querySelector(".npcforge-generate-btn");
+    if (btn) btn.disabled = true;
 
     try {
-      // Gather all params
       const raceId = this._npcParams.raceId;
-      const raceCard = raceId
-        ? getRaceDatabase().find(r => r.id === raceId)
-        : null;
-
-      const specialWish = html.find("#special-wish").val().trim() || null;
-
-      // Collect available Foundry item names for Claude to use
+      const raceCard = raceId ? getRaceDatabase().find(r => r.id === raceId) : null;
+      const specialWish = root.querySelector("#special-wish")?.value.trim() || null;
       const availableItems = game.items.map(i => i.name).slice(0, 100);
 
       const params = {
@@ -332,37 +328,34 @@ export class NpcForgeSidebar extends Application {
         availableItems
       };
 
-      // Step 1: Generate NPC data
-      this._setStatus(html, "Step 1/3: Generating NPC with Claude...", "running");
+      this._setStatus(root, "Step 1/3: Generating NPC with Claude...", "running");
       const npcData = await generateNPC(params);
 
-      // Step 2: Generate portrait
-      this._setStatus(html, "Step 2/3: Generating portrait...", "running");
+      this._setStatus(root, "Step 2/3: Generating portrait...", "running");
       const prompt = buildPortraitPrompt(npcData, raceCard);
       const imageDataUrl = await generatePortrait(prompt);
 
-      // Step 3: Save image + create actor
-      this._setStatus(html, "Step 3/3: Creating Foundry Actor...", "running");
+      this._setStatus(root, "Step 3/3: Creating Foundry Actor...", "running");
       const portraitPath = await savePortraitToFoundry(imageDataUrl, npcData.name);
       await createNPCActor(npcData, portraitPath);
 
-      this._setStatus(html, `Done! "${npcData.name}" created.`, "success");
-
+      this._setStatus(root, `Done! "${npcData.name}" created.`, "success");
     } catch(e) {
       console.error("NPC Forge error:", e);
-      this._setStatus(html, `Error: ${e.message}`, "error");
+      this._setStatus(root, `Error: ${e.message}`, "error");
     } finally {
-      btn.prop("disabled", false);
+      if (btn) btn.disabled = false;
     }
   }
 
-  _setStatus(html, text, type) {
-    const el = html.find(".npcforge-status");
-    el.text(text).attr("class", `npcforge-status ${type}`).show();
+  _setStatus(root, text, type) {
+    const el = root.querySelector(".npcforge-status");
+    if (!el) return;
+    el.textContent = text;
+    el.className = `npcforge-status ${type}`;
+    el.style.display = "block";
   }
 }
-
-// ── Utility ───────────────────────────────────────────────────────────────
 
 async function fileToBase64(file) {
   return new Promise((resolve, reject) => {
