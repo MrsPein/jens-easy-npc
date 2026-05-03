@@ -18,35 +18,39 @@ Hooks.once("init", () => {
 
 Hooks.once("ready", () => {
   console.log("NPC Forge | Ready.");
-  _injectSidebarButton();
+  // Delay to ensure sidebar is fully rendered
+  setTimeout(() => _injectSidebarButton(), 500);
 });
 
-// v13: sidebar renders after ready, use renderSidebar hook
 Hooks.on("renderSidebar", () => {
-  _injectSidebarButton();
+  setTimeout(() => _injectSidebarButton(), 100);
 });
 
 function _injectSidebarButton() {
-  // v13 sidebar tab selectors
+  // v13 uses #sidebar-tabs with nav.tabs inside
   const selectors = [
+    "#sidebar-tabs",
+    "nav.tabs[id='sidebar-tabs']",
     "#sidebar nav.tabs",
-    "#sidebar .tabs[data-group='sidebar']",
     ".sidebar-tabs",
-    "#sidebar-tabs"
+    "nav[data-application-part='tabs']"
   ];
 
   for (const sel of selectors) {
     const el = document.querySelector(sel);
     if (!el) continue;
-    if (el.querySelector("[data-npcforge]")) return; // already added
+    if (el.querySelector("[data-npcforge]")) return;
 
-    const btn = document.createElement("a");
+    const btn = document.createElement("button");
     btn.dataset.npcforge = "1";
-    btn.dataset.tooltip = "NPC Forge – Jen's easy NPC";
+    btn.title = "NPC Forge – Jen's easy NPC";
     btn.setAttribute("aria-label", "NPC Forge");
+    btn.setAttribute("type", "button");
+    btn.className = "ui-control plain icon fa-solid fa-user-plus";
+    btn.setAttribute("data-action", "tab");
+    btn.setAttribute("data-tab", "npc-forge");
     btn.setAttribute("role", "tab");
-    btn.style.cssText = "cursor:pointer;display:flex;align-items:center;justify-content:center;";
-    btn.innerHTML = `<i class="fas fa-user-plus"></i>`;
+    btn.style.cssText = "cursor:pointer;";
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -55,11 +59,29 @@ function _injectSidebarButton() {
     });
 
     el.appendChild(btn);
-    console.log("NPC Forge | Sidebar button injected into", sel);
+    console.log("NPC Forge | Button injected into", sel);
     return;
   }
 
-  console.warn("NPC Forge | Could not find sidebar tabs element. Tried:", selectors);
+  // Fallback: inject into the menu inside sidebar-tabs
+  const menu = document.querySelector("#sidebar-tabs menu, #sidebar-tabs .flexcol");
+  if (menu && !menu.querySelector("[data-npcforge]")) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.dataset.npcforge = "1";
+    btn.title = "NPC Forge";
+    btn.type = "button";
+    btn.className = "ui-control plain icon fa-solid fa-user-plus";
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const panel = getPanel();
+      panel.rendered ? panel.close() : panel.render(true);
+    });
+    li.appendChild(btn);
+    menu.appendChild(li);
+    console.log("NPC Forge | Button injected via fallback menu");
+  }
 }
 
 window.NpcForge = {
