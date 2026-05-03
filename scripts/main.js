@@ -82,8 +82,8 @@ class NpcForgePanel extends Application {
       id: "npc-forge-sidebar",
       title: "Jen's easy NPC",
       template: "modules/npc-forge/templates/sidebar.html",
-      width: 360,
-      height: 720,
+      width: 380,
+      height: 740,
       resizable: true
     });
   }
@@ -92,11 +92,166 @@ class NpcForgePanel extends Application {
   _npcParams = {};
   _searchTimers = {};
 
+  // Build HTML directly to avoid template caching issues on The Forge
+  async _renderInner(data) {
+    let races = [];
+    try { races = JSON.parse(game.settings.get("npc-forge","raceDatabase")); } catch(e) {}
+    const raceList = races.length
+      ? races.map(r => `<div class="npcforge-entry" data-id="${r.id}">
+          <div class="npcforge-entry-header">
+            <span class="npcforge-entry-name">${r.name||"?"}</span>
+            <span class="npcforge-entry-source ${r.isHomebrew?'homebrew':''}">${r.source||""}</span>
+            <button class="npcforge-entry-delete" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#999;font-size:12px">✕</button>
+          </div>
+          <div class="npcforge-entry-traits" style="font-size:10px;color:#888;margin-top:2px">${r.traits?.size||""} · ${r.traits?.speed?.walk||30}ft · ${r.traits?.alignment||""}</div>
+        </div>`).join("")
+      : `<div style="text-align:center;color:#888;font-size:11px;padding:12px 0">No races yet. Import from text above.</div>`;
+
+    const html = `<div id="npc-forge-inner">
+<style>
+#npc-forge-inner { font-family: var(--font-primary); }
+.nf-tabs { display:flex; gap:2px; padding:6px 6px 0; border-bottom:1px solid #ccc; }
+.nf-tab { flex:1; padding:6px 4px; font-size:11px; text-align:center; cursor:pointer; border-radius:4px 4px 0 0; border:1px solid transparent; border-bottom:none; color:#888; background:transparent; }
+.nf-tab.active { background:#fff; border-color:#ccc; color:#333; font-weight:600; }
+.nf-panel { display:none; padding:8px; flex-direction:column; gap:6px; }
+.nf-panel.active { display:flex; }
+.nf-field { display:flex; flex-direction:column; gap:3px; }
+.nf-field label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:#888; }
+.nf-field input, .nf-field textarea, .nf-field select { font-size:12px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; width:100%; box-sizing:border-box; }
+.nf-field textarea { resize:vertical; min-height:48px; font-family:inherit; }
+.nf-chips { display:flex; gap:4px; flex-wrap:wrap; }
+.nf-chip { padding:3px 8px; font-size:11px; border-radius:3px; border:1px solid #ccc; background:#f5f5f5; cursor:pointer; color:#666; }
+.nf-chip.selected { background:#6b5acd; border-color:transparent; color:#fff; }
+.nf-btn { width:100%; padding:8px; font-size:13px; font-weight:600; background:#6b5acd; color:#fff; border:none; border-radius:5px; cursor:pointer; }
+.nf-btn:hover { opacity:0.88; }
+.nf-btn:disabled { opacity:0.4; cursor:not-allowed; }
+.nf-status { font-size:11px; text-align:center; padding:6px; border-radius:4px; display:none; margin-top:4px; }
+.nf-status.running { color:#c8a44a; background:rgba(200,164,74,0.1); display:block; }
+.nf-status.success { color:#4caf78; background:rgba(76,175,120,0.1); display:block; }
+.nf-status.error { color:#e05252; background:rgba(224,82,82,0.1); display:block; }
+.nf-dropzone { border:2px dashed #ccc; border-radius:6px; padding:14px 8px; text-align:center; cursor:pointer; color:#888; font-size:11px; }
+.nf-dropzone:hover { border-color:#6b5acd; background:#f9f7ff; }
+.nf-entry { background:#f9f9f9; border:1px solid #e0e0e0; border-radius:4px; padding:6px 8px; cursor:pointer; margin-bottom:4px; }
+.nf-entry-header { display:flex; align-items:center; gap:6px; }
+.nf-entry-name { font-size:12px; font-weight:600; }
+.nf-entry-source { font-size:10px; padding:1px 5px; border-radius:3px; background:#eee; color:#888; }
+.nf-entry-source.homebrew { background:rgba(180,100,20,0.15); color:#b46414; }
+.nf-results { position:absolute; top:100%; left:0; right:0; z-index:9999; background:#fff; border:1px solid #ccc; border-radius:4px; max-height:180px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.15); display:none; }
+.nf-result-item { display:flex; justify-content:space-between; padding:5px 8px; cursor:pointer; font-size:12px; border-bottom:1px solid #eee; }
+.nf-result-item:hover { background:#f0f0f0; }
+.nf-result-item:last-child { border-bottom:none; }
+.nf-sep { font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#888; padding-bottom:4px; border-bottom:1px solid #eee; margin-top:4px; }
+</style>
+<div class="nf-tabs">
+  <button class="nf-tab ${this._activeTab==='create'?'active':''}" data-tab="create">Create</button>
+  <button class="nf-tab ${this._activeTab==='races'?'active':''}" data-tab="races">Races</button>
+  <button class="nf-tab ${this._activeTab==='classes'?'active':''}" data-tab="classes">Classes</button>
+  <button class="nf-tab ${this._activeTab==='settings'?'active':''}" data-tab="settings">Settings</button>
+</div>
+
+<div class="nf-panel ${this._activeTab==='create'?'active':''}" data-tab="create">
+  <div class="nf-field" style="position:relative">
+    <label>Race <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
+    <input type="text" id="nf-race-search" placeholder="Search races..." autocomplete="off">
+    <div class="nf-results" id="nf-race-results"></div>
+  </div>
+  <div class="nf-field" style="position:relative">
+    <label>Background <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
+    <input type="text" id="nf-bg-search" placeholder="Search backgrounds..." autocomplete="off">
+    <div class="nf-results" id="nf-bg-results"></div>
+  </div>
+  <div class="nf-field" style="position:relative">
+    <label>Occupation <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
+    <input type="text" id="nf-occ-search" placeholder="e.g. Apothecary, Guard..." autocomplete="off">
+    <div class="nf-results" id="nf-occ-results"></div>
+  </div>
+  <div class="nf-field">
+    <label>Gender</label>
+    <div class="nf-chips">
+      <span class="nf-chip selected" data-group="gender" data-value="">Random</span>
+      <span class="nf-chip" data-group="gender" data-value="male">Male</span>
+      <span class="nf-chip" data-group="gender" data-value="female">Female</span>
+      <span class="nf-chip" data-group="gender" data-value="non-binary">Non-binary</span>
+    </div>
+  </div>
+  <div class="nf-field">
+    <label>Age</label>
+    <div class="nf-chips">
+      <span class="nf-chip" data-group="age" data-value="young">Young</span>
+      <span class="nf-chip selected" data-group="age" data-value="normal">Normal</span>
+      <span class="nf-chip" data-group="age" data-value="old">Old</span>
+    </div>
+  </div>
+  <div class="nf-field">
+    <label>Wealth</label>
+    <div class="nf-chips">
+      <span class="nf-chip" data-group="wealth" data-value="arm">Poor</span>
+      <span class="nf-chip" data-group="wealth" data-value="bescheiden">Modest</span>
+      <span class="nf-chip selected" data-group="wealth" data-value="normal">Normal</span>
+      <span class="nf-chip" data-group="wealth" data-value="wohlhabend">Wealthy</span>
+      <span class="nf-chip" data-group="wealth" data-value="aristokratisch">Noble</span>
+    </div>
+  </div>
+  <div class="nf-field">
+    <label>Special visual wish <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
+    <textarea id="nf-special-wish" placeholder="e.g. holds a torch, wears a blue cape..."></textarea>
+  </div>
+  <div class="nf-status" id="nf-create-status"></div>
+  <button class="nf-btn nf-generate-btn">Generate NPC</button>
+</div>
+
+<div class="nf-panel ${this._activeTab==='races'?'active':''}" data-tab="races">
+  <div class="nf-dropzone" id="nf-dropzone">
+    <div style="font-size:20px;margin-bottom:6px;opacity:0.4">⬆</div>
+    Drop image or text file here, or click to browse
+  </div>
+  <div class="nf-field">
+    <label>Or paste text / description</label>
+    <textarea class="nf-import-textarea" rows="4" placeholder="Paste race description..."></textarea>
+    <button class="nf-btn" id="nf-import-text-btn" style="margin-top:4px">Import from text</button>
+  </div>
+  <div class="nf-status" id="nf-races-status"></div>
+  <div class="nf-sep">Saved races (${races.length})</div>
+  ${raceList}
+</div>
+
+<div class="nf-panel ${this._activeTab==='classes'?'active':''}" data-tab="classes">
+  <div class="nf-field">
+    <label>Paste class description</label>
+    <textarea class="nf-class-textarea" rows="4" placeholder="Paste class or subclass..."></textarea>
+    <button class="nf-btn" id="nf-import-class-btn" style="margin-top:4px">Import class</button>
+  </div>
+  <div class="nf-status" id="nf-classes-status"></div>
+</div>
+
+<div class="nf-panel ${this._activeTab==='settings'?'active':''}" data-tab="settings">
+  <div class="nf-field">
+    <label>Anthropic / OpenRouter API Key</label>
+    <input type="password" id="nf-anthropic-key" placeholder="sk-ant-... or sk-or-...">
+  </div>
+  <div class="nf-field">
+    <label>Image Generator</label>
+    <select id="nf-image-provider">
+      <option value="imagen">Google Imagen 3 (recommended)</option>
+      <option value="dalle">OpenAI DALL-E 3</option>
+    </select>
+  </div>
+  <div class="nf-field">
+    <label>Image API Key</label>
+    <input type="password" id="nf-image-key" placeholder="Gemini or OpenAI key...">
+  </div>
+  <button class="nf-btn" id="nf-save-settings" style="margin-top:8px">Save Settings</button>
+  <div class="nf-status" id="nf-settings-status"></div>
+</div>
+</div>`;
+
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return $(div);
+  }
+
   getData() {
-    let races = [], classes = [];
-    try { races = JSON.parse(game.settings.get("npc-forge", "raceDatabase")); } catch(e) {}
-    try { classes = JSON.parse(game.settings.get("npc-forge", "classDatabase")); } catch(e) {}
-    return { races, classes, activeTab: this._activeTab };
+    return {};
   }
 
   activateListeners(html) {
@@ -104,41 +259,40 @@ class NpcForgePanel extends Application {
     const root = html instanceof HTMLElement ? html : html[0];
 
     // Tabs
-    root.querySelectorAll(".npcforge-tab").forEach(tab => {
+    root.querySelectorAll(".nf-tab").forEach(tab => {
       tab.addEventListener("click", e => {
         this._activeTab = e.currentTarget.dataset.tab;
-        root.querySelectorAll(".npcforge-tab").forEach(t => t.classList.remove("active"));
-        root.querySelectorAll(".npcforge-panel").forEach(p => p.classList.remove("active"));
+        root.querySelectorAll(".nf-tab").forEach(t => t.classList.remove("active"));
+        root.querySelectorAll(".nf-panel").forEach(p => p.classList.remove("active"));
         e.currentTarget.classList.add("active");
-        root.querySelector(`.npcforge-panel[data-tab="${this._activeTab}"]`)?.classList.add("active");
+        root.querySelector(`.nf-panel[data-tab="${this._activeTab}"]`)?.classList.add("active");
       });
     });
 
     // Chips
-    root.querySelectorAll(".npcforge-chip").forEach(chip => {
+    root.querySelectorAll(".nf-chip").forEach(chip => {
       chip.addEventListener("click", e => {
         const group = e.currentTarget.dataset.group;
-        root.querySelectorAll(`.npcforge-chip[data-group="${group}"]`).forEach(c => c.classList.remove("selected"));
+        root.querySelectorAll(`.nf-chip[data-group="${group}"]`).forEach(c => c.classList.remove("selected"));
         e.currentTarget.classList.add("selected");
         this._npcParams[group] = e.currentTarget.dataset.value;
       });
     });
 
-    // Search boxes with live results
-    this._setupSearch(root, "race-search", "race-results", q => {
+    // Search boxes
+    this._setupSearch(root, "nf-race-search", "nf-race-results", q => {
       let races = [];
-      try { races = JSON.parse(game.settings.get("npc-forge", "raceDatabase")); } catch(e) {}
-      return races.filter(r => r.name.toLowerCase().includes(q.toLowerCase()))
-        .map(r => `<div class="npcforge-result-item" data-id="${r.id}" data-type="race"><span class="item-name">${r.name}</span><span class="item-source">${r.source||""}</span></div>`).join("")
-        || `<div class="npcforge-no-results">No races found</div>`;
+      try { races = JSON.parse(game.settings.get("npc-forge","raceDatabase")); } catch(e) {}
+      return races.filter(r => r.name?.toLowerCase().includes(q.toLowerCase()))
+        .map(r => `<div class="nf-result-item" data-id="${r.id}" data-type="race"><span>${r.name}</span><span style="color:#888;font-size:10px">${r.source||""}</span></div>`).join("")
+        || `<div style="padding:8px;color:#888;font-size:11px;text-align:center">No races found</div>`;
     });
 
-    this._setupSearch(root, "bg-search", "bg-results", async q => {
+    this._setupSearch(root, "nf-bg-search", "nf-bg-results", async q => {
       const results = [];
       for (const item of game.items) {
-        if (item.type === "background" && item.name.toLowerCase().includes(q.toLowerCase())) {
-          results.push(`<div class="npcforge-result-item" data-name="${item.name}" data-type="background"><span class="item-name">${item.name}</span><span class="item-source">World</span></div>`);
-        }
+        if (item.type==="background" && item.name.toLowerCase().includes(q.toLowerCase()))
+          results.push(`<div class="nf-result-item" data-name="${item.name}" data-type="background"><span>${item.name}</span><span style="color:#888;font-size:10px">World</span></div>`);
       }
       for (const pack of game.packs) {
         if (results.length > 20) break;
@@ -146,62 +300,92 @@ class NpcForgePanel extends Application {
           const index = await pack.getIndex();
           for (const e of index) {
             if (e.name.toLowerCase().includes(q.toLowerCase())) {
-              results.push(`<div class="npcforge-result-item" data-name="${e.name}" data-type="background"><span class="item-name">${e.name}</span><span class="item-source">${pack.metadata.label}</span></div>`);
+              results.push(`<div class="nf-result-item" data-name="${e.name}" data-type="background"><span>${e.name}</span><span style="color:#888;font-size:10px">${pack.metadata.label}</span></div>`);
               if (results.length > 20) break;
             }
           }
         } catch(e) {}
       }
-      return results.join("") || `<div class="npcforge-no-results">No results</div>`;
+      return results.join("") || `<div style="padding:8px;color:#888;font-size:11px;text-align:center">No results</div>`;
     });
 
-    this._setupSearch(root, "occ-search", "occ-results", q => {
+    this._setupSearch(root, "nf-occ-search", "nf-occ-results", q => {
       const common = ["Blacksmith","Innkeeper","Guard","Merchant","Farmer","Apothecary","Scholar","Sailor","Thief","Priest","Hunter","Herbalist","Cook","Scribe","Cartographer"];
       return common.filter(o => o.toLowerCase().includes(q.toLowerCase()))
-        .map(o => `<div class="npcforge-result-item" data-name="${o}" data-type="occupation"><span class="item-name">${o}</span></div>`).join("")
-        || `<div class="npcforge-no-results">Type occupation name</div>`;
+        .map(o => `<div class="nf-result-item" data-name="${o}" data-type="occupation"><span>${o}</span></div>`).join("")
+        || "";
     });
 
     // Result clicks
     root.addEventListener("click", e => {
-      const item = e.target.closest(".npcforge-result-item");
+      const item = e.target.closest(".nf-result-item");
       if (!item) return;
       const type = item.dataset.type;
-      const name = item.dataset.name || item.querySelector(".item-name")?.textContent;
+      const name = item.dataset.name || item.querySelector("span")?.textContent;
       const id = item.dataset.id;
-      if (type === "race") { this._npcParams.raceId = id; this._npcParams.raceName = name; root.querySelector("#race-search").value = name; root.querySelector("#race-results").style.display="none"; }
-      else if (type === "background") { this._npcParams.background = name; root.querySelector("#bg-search").value = name; root.querySelector("#bg-results").style.display="none"; }
-      else if (type === "occupation") { this._npcParams.occupation = name; root.querySelector("#occ-search").value = name; root.querySelector("#occ-results").style.display="none"; }
+      if (type==="race") { this._npcParams.raceId=id; this._npcParams.raceName=name; const inp=root.querySelector("#nf-race-search"); if(inp)inp.value=name; root.querySelector("#nf-race-results").style.display="none"; }
+      else if (type==="background") { this._npcParams.background=name; const inp=root.querySelector("#nf-bg-search"); if(inp)inp.value=name; root.querySelector("#nf-bg-results").style.display="none"; }
+      else if (type==="occupation") { this._npcParams.occupation=name; const inp=root.querySelector("#nf-occ-search"); if(inp)inp.value=name; root.querySelector("#nf-occ-results").style.display="none"; }
     });
 
     // Generate button
-    root.querySelector(".npcforge-generate-btn")?.addEventListener("click", () => this._generateNPC(root));
+    root.querySelector(".nf-generate-btn")?.addEventListener("click", () => this._generateNPC(root));
 
     // Import text
-    root.querySelector(".npcforge-import-text-btn")?.addEventListener("click", () => {
-      const text = root.querySelector(".npcforge-import-textarea")?.value?.trim();
+    root.querySelector("#nf-import-text-btn")?.addEventListener("click", () => {
+      const text = root.querySelector(".nf-import-textarea")?.value?.trim();
       if (text) this._importFromText(text, root);
     });
 
+    // Import class
+    root.querySelector("#nf-import-class-btn")?.addEventListener("click", () => {
+      const text = root.querySelector(".nf-class-textarea")?.value?.trim();
+      if (text) this._importFromText(text, root, "class");
+    });
+
     // Dropzone
-    const dz = root.querySelector(".npcforge-dropzone");
+    const dz = root.querySelector("#nf-dropzone");
     if (dz) {
-      dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("drag-over"); });
-      dz.addEventListener("dragleave", () => dz.classList.remove("drag-over"));
-      dz.addEventListener("drop", e => { e.preventDefault(); dz.classList.remove("drag-over"); this._handleFiles(e.dataTransfer.files, root); });
-      dz.addEventListener("click", () => { const inp = document.createElement("input"); inp.type="file"; inp.multiple=true; inp.accept=".pdf,.txt,.png,.jpg,.jpeg,.webp"; inp.onchange=()=>this._handleFiles(inp.files,root); inp.click(); });
+      dz.addEventListener("dragover", e => { e.preventDefault(); dz.style.borderColor="#6b5acd"; });
+      dz.addEventListener("dragleave", () => dz.style.borderColor="#ccc");
+      dz.addEventListener("drop", e => { e.preventDefault(); dz.style.borderColor="#ccc"; this._handleFiles(e.dataTransfer.files, root); });
+      dz.addEventListener("click", () => { const inp=document.createElement("input"); inp.type="file"; inp.multiple=true; inp.accept=".txt,.png,.jpg,.jpeg,.webp"; inp.onchange=()=>this._handleFiles(inp.files,root); inp.click(); });
     }
 
+    // Delete race
+    root.addEventListener("click", async e => {
+      const del = e.target.closest(".npcforge-entry-delete");
+      if (!del) return;
+      e.stopPropagation();
+      const id = del.closest(".nf-entry")?.dataset.id;
+      if (id) {
+        let db = [];
+        try { db = JSON.parse(game.settings.get("npc-forge","raceDatabase")); } catch(e) {}
+        await game.settings.set("npc-forge","raceDatabase",JSON.stringify(db.filter(r=>r.id!==id)));
+        this.render();
+      }
+    });
+
     // Settings save
-    root.querySelector(".npcforge-save-settings")?.addEventListener("click", async () => {
-      const k = root.querySelector("[name=anthropicKey]")?.value;
-      const p = root.querySelector("[name=imageProvider]")?.value;
-      const ik = root.querySelector("[name=imageApiKey]")?.value;
+    root.querySelector("#nf-save-settings")?.addEventListener("click", async () => {
+      const k = root.querySelector("#nf-anthropic-key")?.value;
+      const p = root.querySelector("#nf-image-provider")?.value;
+      const ik = root.querySelector("#nf-image-key")?.value;
       if (k) await game.settings.set("npc-forge","anthropicKey",k);
       if (p) await game.settings.set("npc-forge","imageProvider",p);
       if (ik) await game.settings.set("npc-forge","imageApiKey",ik);
-      ui.notifications.info("NPC Forge: Settings saved!");
+      this._setStatus(root, "Settings saved!", "success", "nf-settings-status");
     });
+
+    // Load saved settings into fields
+    try {
+      const savedKey = game.settings.get("npc-forge","anthropicKey");
+      const savedProvider = game.settings.get("npc-forge","imageProvider");
+      const savedImageKey = game.settings.get("npc-forge","imageApiKey");
+      if (savedKey) { const el=root.querySelector("#nf-anthropic-key"); if(el)el.value=savedKey; }
+      if (savedProvider) { const el=root.querySelector("#nf-image-provider"); if(el)el.value=savedProvider; }
+      if (savedImageKey) { const el=root.querySelector("#nf-image-key"); if(el)el.value=savedImageKey; }
+    } catch(e) {}
   }
 
   _setupSearch(root, inputId, resultsId, fetchFn) {
@@ -238,8 +422,8 @@ class NpcForgePanel extends Application {
     }
   }
 
-  async _importFromText(text, root) {
-    this._setStatus(root, "Step 1/2: Extracting base traits...", "running");
+  async _importFromText(text, root, type="race") {
+    this._setStatus(root, "Step 1/2: Extracting base traits...", "running", "nf-races-status");
     try {
       // Call 1: Basic stats and appearance
       const part1 = await this._callClaude(
@@ -249,7 +433,7 @@ class NpcForgePanel extends Application {
         2000
       );
 
-      this._setStatus(root, "Step 2/2: Extracting features & culture...", "running");
+      this._setStatus(root, "Step 2/2: Extracting features & culture...", "running", "nf-races-status");
 
       // Call 2: Features, culture, names
       const part2 = await this._callClaude(
@@ -281,9 +465,9 @@ class NpcForgePanel extends Application {
       try { db = JSON.parse(game.settings.get("npc-forge","raceDatabase")); } catch(e) {}
       db.push(data);
       await game.settings.set("npc-forge","raceDatabase",JSON.stringify(db));
-      this._setStatus(root, `Race "${data.name}" imported!`, "success");
+      this._setStatus(root, `Race "${data.name}" imported!`, "success", "nf-races-status");
       this.render();
-    } catch(e) { this._setStatus(root, `Error: ${e.message}`, "error"); }
+    } catch(e) { this._setStatus(root, `Error: ${e.message}`, "error", "nf-races-status"); }
   }
 
   async _importFromImageB64(b64, mime, root) {
@@ -420,13 +604,36 @@ Make portraitPrompt very detailed with exact appearance, clothing matching wealt
     }
   }
 
-  _setStatus(root, text, type) {
-    // Show status only in the currently active panel
-    const activePanel = root.querySelector(".npcforge-panel.active");
-    const el = activePanel ? activePanel.querySelector(".npcforge-status") : root.querySelector(".npcforge-status");
+  _setupSearch(root, inputId, resultsId, fetchFn) {
+    const input = root.querySelector(`#${inputId}`);
+    const results = root.querySelector(`#${resultsId}`);
+    if (!input || !results) return;
+    input.addEventListener("input", () => {
+      clearTimeout(this._searchTimers[inputId]);
+      this._searchTimers[inputId] = setTimeout(async () => {
+        const q = input.value.trim();
+        if (!q) { results.style.display="none"; return; }
+        results.innerHTML = await fetchFn(q);
+        results.style.display = "block";
+      }, 200);
+    });
+    input.addEventListener("blur", () => setTimeout(() => results.style.display="none", 200));
+  }
+
+  _setStatus(root, text, type, statusId) {
+    // Use specific status ID if provided, otherwise find active panel's status
+    let el;
+    if (statusId) {
+      el = root.querySelector(`#${statusId}`);
+    } else {
+      const activePanel = root.querySelector(".nf-panel.active");
+      if (activePanel) {
+        el = activePanel.querySelector(".nf-status");
+      }
+    }
+    if (!el) el = root.querySelector(".nf-status");
     if (!el) return;
     el.textContent = text;
-    el.className = `npcforge-status ${type}`;
-    el.style.display = "block";
+    el.className = `nf-status ${type}`;
   }
 }
