@@ -239,27 +239,44 @@ class NpcForgePanel extends Application {
   }
 
   async _importFromText(text, root) {
-    this._setStatus(root, "Analysing with Claude...", "running");
+    this._setStatus(root, "Step 1/2: Extracting base traits...", "running");
     try {
-      const card = await this._callClaude(
-        `You are a D&D 5e race extractor. Extract race data and return ONLY a single valid JSON object. Keep descriptions SHORT (max 50 chars each). No markdown, no explanation. Start with { end with }.
-Fields: name, source, description(short), appearance{description,inspiration,skinColors[],eyeColors[],heightRange,distinctiveFeatures[]}, traits{creatureType,size,speed{walk,swim,fly},abilityScoreIncreases,age{adulthood,lifespan},alignment,languages[],racialFeatures[{name,description}]}, subtypes[{name,description,features[{name,description}]}], culture{homeland,values[],habits[],likes[],dislikes[]}, names{examples[]}, npcHints{personalityTraits[],portraitPromptBase}`,
-        `Extract race data. Be concise. Return ONLY JSON:\n\n${text}`,
-        6000
+      // Call 1: Basic stats and appearance
+      const part1 = await this._callClaude(
+        `D&D 5e race extractor. Return ONLY valid JSON, no markdown. Extract ONLY these fields:
+{"name":"","source":"","description":"","appearance":{"description":"","inspiration":"","skinColors":[],"eyeColors":[],"heightRange":"","distinctiveFeatures":[]},"traits":{"creatureType":"","size":"","speed":{"walk":30,"swim":0,"fly":0},"abilityScoreIncreases":"","typicalAbilityScores":[],"age":{"adulthood":0,"lifespan":0},"alignment":"","languages":[],"darkvision":0}}`,
+        `Extract ONLY the base stats from this race description. Return ONLY JSON:\n\n${text}`,
+        2000
       );
-      let cleaned = card.replace(/```json|```/g,"").trim();
-      // Try to repair truncated JSON by finding last complete object
-      if (!cleaned.endsWith("}")) {
-        const lastBrace = cleaned.lastIndexOf("}");
-        if (lastBrace > 0) cleaned = cleaned.substring(0, lastBrace + 1);
-        // Close any open arrays/objects
-        let opens = 0;
-        for (const c of cleaned) { if (c==="{") opens++; if (c==="}") opens--; }
-        for (let i=0; i<opens; i++) cleaned += "}";
-      }
-      const data = JSON.parse(cleaned);
-      data.id = foundry.utils.randomID();
-      data.isHomebrew = true;
+
+      this._setStatus(root, "Step 2/2: Extracting features & culture...", "running");
+
+      // Call 2: Features, culture, names
+      const part2 = await this._callClaude(
+        `D&D 5e race extractor. Return ONLY valid JSON, no markdown. Extract ONLY these fields:
+{"racialFeatures":[{"name":"","description":"","mechanics":""}],"subtypes":[{"name":"","description":"","features":[{"name":"","description":""}]}],"culture":{"homeland":"","patronDeity":"","values":[],"habits":[],"likes":[],"dislikes":[]},"names":{"examples":[],"naming_conventions":""},"npcHints":{"personalityTraits":[],"occupations":[],"portraitPromptBase":""}}`,
+        `Extract ONLY the racial features, subtypes, culture, names and NPC hints from this race description. Return ONLY JSON:\n\n${text}`,
+        2000
+      );
+
+      // Parse and merge both parts
+      const p1 = JSON.parse(part1.replace(/```json|```/g,"").trim());
+      const p2 = JSON.parse(part2.replace(/```json|```/g,"").trim());
+
+      const data = {
+        ...p1,
+        traits: {
+          ...p1.traits,
+          racialFeatures: p2.racialFeatures || []
+        },
+        subtypes: p2.subtypes || [],
+        culture: p2.culture || {},
+        names: p2.names || {},
+        npcHints: p2.npcHints || {},
+        id: foundry.utils.randomID(),
+        isHomebrew: true
+      };
+
       let db = [];
       try { db = JSON.parse(game.settings.get("npc-forge","raceDatabase")); } catch(e) {}
       db.push(data);
