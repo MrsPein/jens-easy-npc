@@ -1,0 +1,19 @@
+{
+  "id": "npc-forge",
+  "title": "NPC Forge",
+  "description": "AI-powered NPC generator with custom race/class database, PDF import, and portrait generation.",
+  "version": "0.1.0",
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13"
+  },
+  "relationships": {
+    "systems": [{ "id": "dnd5e" }]
+  },
+  "authors": [{ "name": "You" }],
+  "esmodules": ["scripts/main.js"],
+  "styles": ["styles/npc-forge.css", "styles/dropdown.css"],
+  "languages": [{ "lang": "en", "name": "English", "path": "lang/en.json" }],
+  "flags": {},
+  "socket": false
+}
