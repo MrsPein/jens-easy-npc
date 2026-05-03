@@ -242,12 +242,22 @@ class NpcForgePanel extends Application {
     this._setStatus(root, "Analysing with Claude...", "running");
     try {
       const card = await this._callClaude(
-        `You are a D&D 5e race extractor. Extract race data and return ONLY a single valid JSON object. No markdown fences, no explanation, no extra text. Start directly with { and end with }.
-Required fields: name, source, description, appearance{description,inspiration,skinColors[],eyeColors[],heightRange,weightRange,distinctiveFeatures[]}, traits{creatureType,size,speed{walk,swim,fly},abilityScoreIncreases,typicalAbilityScores[],age{adulthood,lifespan,description},alignment,languages[],darkvision,racialFeatures[{name,description,mechanics}]}, subtypes[{name,description,additionalFeatures[{name,description}]}], culture{homeland,patronDeity,values[],habits[],likes[],dislikes[]}, names{naming_conventions,examples[],familyNames[]}, npcHints{personalityTraits[],occupations[],portraitPromptBase}`,
-        `Extract ALL race data from this text. Return ONLY the JSON:\n\n${text}`,
-        4000
+        `You are a D&D 5e race extractor. Extract race data and return ONLY a single valid JSON object. Keep descriptions SHORT (max 50 chars each). No markdown, no explanation. Start with { end with }.
+Fields: name, source, description(short), appearance{description,inspiration,skinColors[],eyeColors[],heightRange,distinctiveFeatures[]}, traits{creatureType,size,speed{walk,swim,fly},abilityScoreIncreases,age{adulthood,lifespan},alignment,languages[],racialFeatures[{name,description}]}, subtypes[{name,description,features[{name,description}]}], culture{homeland,values[],habits[],likes[],dislikes[]}, names{examples[]}, npcHints{personalityTraits[],portraitPromptBase}`,
+        `Extract race data. Be concise. Return ONLY JSON:\n\n${text}`,
+        6000
       );
-      const data = JSON.parse(card.replace(/\`\`\`json|\`\`\`/g,"").trim());
+      let cleaned = card.replace(/```json|```/g,"").trim();
+      // Try to repair truncated JSON by finding last complete object
+      if (!cleaned.endsWith("}")) {
+        const lastBrace = cleaned.lastIndexOf("}");
+        if (lastBrace > 0) cleaned = cleaned.substring(0, lastBrace + 1);
+        // Close any open arrays/objects
+        let opens = 0;
+        for (const c of cleaned) { if (c==="{") opens++; if (c==="}") opens--; }
+        for (let i=0; i<opens; i++) cleaned += "}";
+      }
+      const data = JSON.parse(cleaned);
       data.id = foundry.utils.randomID();
       data.isHomebrew = true;
       let db = [];
@@ -394,7 +404,9 @@ Make portraitPrompt very detailed with exact appearance, clothing matching wealt
   }
 
   _setStatus(root, text, type) {
-    const el = root.querySelector(".npcforge-status");
+    // Show status only in the currently active panel
+    const activePanel = root.querySelector(".npcforge-panel.active");
+    const el = activePanel ? activePanel.querySelector(".npcforge-status") : root.querySelector(".npcforge-status");
     if (!el) return;
     el.textContent = text;
     el.className = `npcforge-status ${type}`;
