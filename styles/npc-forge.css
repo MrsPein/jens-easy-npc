@@ -1,0 +1,320 @@
+/* NPC Forge – Main Styles */
+
+/* ── Sidebar Panel ─────────────────────────────────── */
+#npc-forge-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--color-bg-option);
+}
+
+#npc-forge-sidebar .npcforge-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 6px 0;
+  border-bottom: 1px solid var(--color-border-light-tertiary);
+  flex-shrink: 0;
+}
+
+#npc-forge-sidebar .npcforge-tab {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+  color: var(--color-text-dark-secondary);
+  background: transparent;
+  transition: background 0.15s;
+}
+
+#npc-forge-sidebar .npcforge-tab:hover {
+  background: var(--color-bg-btn-minor-hover);
+}
+
+#npc-forge-sidebar .npcforge-tab.active {
+  background: var(--color-bg-option);
+  border-color: var(--color-border-light-tertiary);
+  color: var(--color-text-dark-primary);
+  font-weight: 600;
+}
+
+#npc-forge-sidebar .npcforge-panel {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+#npc-forge-sidebar .npcforge-panel.active {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Search Bar ─────────────────────────────────────── */
+.npcforge-search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--color-bg-btn);
+  border: 1px solid var(--color-border-light-tertiary);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.npcforge-search input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--color-text-dark-primary);
+  font-size: 12px;
+  outline: none;
+}
+
+/* ── Race / Class Cards ─────────────────────────────── */
+.npcforge-entry {
+  background: var(--color-bg-btn);
+  border: 1px solid var(--color-border-light-tertiary);
+  border-radius: 4px;
+  padding: 6px 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.npcforge-entry:hover {
+  border-color: var(--color-border-light-primary);
+  background: var(--color-bg-btn-minor-hover);
+}
+
+.npcforge-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.npcforge-entry-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-dark-primary);
+}
+
+.npcforge-entry-source {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--color-bg-tag);
+  color: var(--color-text-dark-secondary);
+}
+
+.npcforge-entry-source.homebrew {
+  background: rgba(180, 100, 20, 0.2);
+  color: #d4853a;
+}
+
+.npcforge-entry-traits {
+  font-size: 10px;
+  color: var(--color-text-dark-secondary);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Import Zone ─────────────────────────────────────── */
+.npcforge-dropzone {
+  border: 2px dashed var(--color-border-light-tertiary);
+  border-radius: 6px;
+  padding: 16px 8px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--color-text-dark-secondary);
+  font-size: 11px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.npcforge-dropzone:hover,
+.npcforge-dropzone.drag-over {
+  border-color: var(--color-border-light-primary);
+  background: var(--color-bg-btn-minor-hover);
+}
+
+.npcforge-dropzone .drop-icon {
+  font-size: 24px;
+  display: block;
+  margin-bottom: 6px;
+  opacity: 0.5;
+}
+
+/* ── NPC Creator Form ────────────────────────────────── */
+.npcforge-creator {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.npcforge-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.npcforge-field label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-dark-secondary);
+}
+
+.npcforge-field select,
+.npcforge-field input[type="text"],
+.npcforge-field textarea {
+  font-size: 12px;
+  padding: 4px 6px;
+  background: var(--color-bg-btn);
+  border: 1px solid var(--color-border-light-tertiary);
+  border-radius: 4px;
+  color: var(--color-text-dark-primary);
+}
+
+.npcforge-field textarea {
+  resize: vertical;
+  min-height: 48px;
+  font-family: inherit;
+}
+
+.npcforge-chips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.npcforge-chip {
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border-light-tertiary);
+  background: var(--color-bg-btn);
+  cursor: pointer;
+  color: var(--color-text-dark-secondary);
+  transition: all 0.15s;
+}
+
+.npcforge-chip.selected {
+  background: var(--color-bg-tag-active, #4a3f8a);
+  border-color: transparent;
+  color: #fff;
+}
+
+/* ── Generate Button ─────────────────────────────────── */
+.npcforge-generate-btn {
+  width: 100%;
+  padding: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--color-bg-tag-active, #4a3f8a);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+  transition: opacity 0.15s;
+}
+
+.npcforge-generate-btn:hover { opacity: 0.88; }
+.npcforge-generate-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Progress / Status ───────────────────────────────── */
+.npcforge-status {
+  font-size: 11px;
+  text-align: center;
+  padding: 6px;
+  border-radius: 4px;
+  color: var(--color-text-dark-secondary);
+  background: var(--color-bg-btn);
+}
+
+.npcforge-status.running {
+  color: #c8a44a;
+  background: rgba(200, 164, 74, 0.1);
+}
+
+.npcforge-status.success {
+  color: #4caf78;
+  background: rgba(76, 175, 120, 0.1);
+}
+
+.npcforge-status.error {
+  color: #e05252;
+  background: rgba(224, 82, 82, 0.1);
+}
+
+/* ── AI Badge ────────────────────────────────────────── */
+.npcforge-ai-badge {
+  display: inline-block;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(200, 164, 74, 0.2);
+  color: #c8a44a;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+/* ── Settings Panel ─────────────────────────────────── */
+.npcforge-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 2px;
+}
+
+.npcforge-settings h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-dark-secondary);
+  margin: 8px 0 2px;
+  border-bottom: 1px solid var(--color-border-light-tertiary);
+  padding-bottom: 3px;
+}
+
+/* ── Karteikarte Preview ─────────────────────────────── */
+.npcforge-card-preview {
+  background: var(--color-bg-btn);
+  border: 1px solid var(--color-border-light-tertiary);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 11px;
+}
+
+.npcforge-card-preview h2 {
+  font-size: 14px;
+  margin: 0 0 6px;
+  color: var(--color-text-dark-primary);
+}
+
+.npcforge-card-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.npcforge-card-key {
+  color: var(--color-text-dark-secondary);
+  min-width: 70px;
+  flex-shrink: 0;
+}
+
+.npcforge-card-val {
+  color: var(--color-text-dark-primary);
+}
+
+.npcforge-card-val.ai-fill {
+  color: #c8a44a;
+}
