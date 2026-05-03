@@ -1,0 +1,213 @@
+{{!-- NPC Forge Sidebar Template --}}
+<div id="npc-forge-sidebar">
+
+  {{!-- Tab bar --}}
+  <div class="npcforge-tabs">
+    <button class="npcforge-tab {{#eq activeTab 'create'}}active{{/eq}}" data-tab="create">Create</button>
+    <button class="npcforge-tab {{#eq activeTab 'races'}}active{{/eq}}"  data-tab="races">Races</button>
+    <button class="npcforge-tab {{#eq activeTab 'classes'}}active{{/eq}}" data-tab="classes">Classes</button>
+    <button class="npcforge-tab {{#eq activeTab 'settings'}}active{{/eq}}" data-tab="settings">Settings</button>
+  </div>
+
+  {{!-- ══ CREATE TAB ══════════════════════════════════════════════════════ --}}
+  <div class="npcforge-panel {{#eq activeTab 'create'}}active{{/eq}}" data-tab="create">
+
+    <div class="npcforge-creator">
+
+      {{!-- Race --}}
+      <div class="npcforge-field">
+        <label>Race <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
+        <div style="position:relative">
+          <input type="text" id="race-search" placeholder="Search races..." autocomplete="off">
+          <div id="race-results" class="npcforge-dropdown" style="display:none"></div>
+        </div>
+      </div>
+
+      {{!-- Class --}}
+      <div class="npcforge-field">
+        <label>Class <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
+        <div style="position:relative">
+          <input type="text" id="class-search" placeholder="Search classes..." autocomplete="off">
+          <div id="class-results" class="npcforge-dropdown" style="display:none"></div>
+        </div>
+      </div>
+
+      {{!-- Background --}}
+      <div class="npcforge-field">
+        <label>Background <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
+        <div style="position:relative">
+          <input type="text" id="bg-search" placeholder="Search backgrounds..." autocomplete="off">
+          <div id="bg-results" class="npcforge-dropdown" style="display:none"></div>
+        </div>
+      </div>
+
+      {{!-- Occupation --}}
+      <div class="npcforge-field">
+        <label>Occupation <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
+        <div style="position:relative">
+          <input type="text" id="occ-search" placeholder="e.g. Apothecary, Guard..." autocomplete="off">
+          <div id="occ-results" class="npcforge-dropdown" style="display:none"></div>
+        </div>
+      </div>
+
+      {{!-- Gender --}}
+      <div class="npcforge-field">
+        <label>Gender</label>
+        <div class="npcforge-chips">
+          <span class="npcforge-chip selected" data-group="gender" data-value="">Random</span>
+          <span class="npcforge-chip" data-group="gender" data-value="male">Male</span>
+          <span class="npcforge-chip" data-group="gender" data-value="female">Female</span>
+          <span class="npcforge-chip" data-group="gender" data-value="non-binary">Non-binary</span>
+        </div>
+      </div>
+
+      {{!-- Age --}}
+      <div class="npcforge-field">
+        <label>Age</label>
+        <div class="npcforge-chips">
+          <span class="npcforge-chip" data-group="age" data-value="young">Young</span>
+          <span class="npcforge-chip selected" data-group="age" data-value="normal">Normal</span>
+          <span class="npcforge-chip" data-group="age" data-value="old">Old</span>
+        </div>
+      </div>
+
+      {{!-- Wealth --}}
+      <div class="npcforge-field">
+        <label>Wealth</label>
+        <div class="npcforge-chips">
+          <span class="npcforge-chip" data-group="wealth" data-value="arm">Poor</span>
+          <span class="npcforge-chip" data-group="wealth" data-value="bescheiden">Modest</span>
+          <span class="npcforge-chip selected" data-group="wealth" data-value="normal">Normal</span>
+          <span class="npcforge-chip" data-group="wealth" data-value="wohlhabend">Wealthy</span>
+          <span class="npcforge-chip" data-group="wealth" data-value="aristokratisch">Noble</span>
+        </div>
+      </div>
+
+      {{!-- Special Wish --}}
+      <div class="npcforge-field">
+        <label>Special visual wish <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
+        <textarea id="special-wish" placeholder="e.g. holds a torch, wears a blue cape, prince of an underground realm who has never seen the sun..."></textarea>
+      </div>
+
+      {{!-- Status --}}
+      <div class="npcforge-status" style="display:none"></div>
+
+      {{!-- Generate --}}
+      <button class="npcforge-generate-btn">Generate NPC</button>
+
+    </div>
+  </div>
+
+  {{!-- ══ RACES TAB ════════════════════════════════════════════════════════ --}}
+  <div class="npcforge-panel {{#eq activeTab 'races'}}active{{/eq}}" data-tab="races">
+
+    {{!-- Import area --}}
+    <div class="npcforge-dropzone">
+      <span class="drop-icon">⬆</span>
+      Drop PDF, image (JPG/PNG/WebP) or text file here<br>
+      <small>or click to browse · multiple files ok</small>
+    </div>
+
+    <div class="npcforge-field" style="margin-top:4px">
+      <label>Or paste text / description</label>
+      <textarea class="npcforge-import-textarea" rows="4" placeholder="Paste race description, stat block, or any text..."></textarea>
+      <button class="npcforge-import-text-btn" style="margin-top:4px;width:100%">Import from text</button>
+    </div>
+
+    <div class="npcforge-status" style="display:none"></div>
+
+    <div style="margin-top:8px; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--color-text-dark-secondary); padding-bottom:4px; border-bottom:1px solid var(--color-border-light-tertiary);">
+      Saved Races ({{races.length}})
+    </div>
+
+    {{#each races}}
+    <div class="npcforge-entry" data-id="{{id}}">
+      <div class="npcforge-entry-header">
+        <span class="npcforge-entry-name">{{name}}</span>
+        <span class="npcforge-entry-source {{#if isHomebrew}}homebrew{{/if}}">{{source}}</span>
+        <button class="npcforge-entry-delete" title="Delete" style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--color-text-dark-secondary);font-size:12px">✕</button>
+      </div>
+      {{#if traits}}
+      <div class="npcforge-entry-traits">
+        {{traits.size}} · {{traits.speed.walk}}ft · {{traits.abilityScoreIncreases}}
+      </div>
+      {{/if}}
+    </div>
+    {{else}}
+    <div style="text-align:center;color:var(--color-text-dark-secondary);font-size:11px;padding:12px 0">
+      No races yet. Import from PDF or text above.
+    </div>
+    {{/each}}
+  </div>
+
+  {{!-- ══ CLASSES TAB ══════════════════════════════════════════════════════ --}}
+  <div class="npcforge-panel {{#eq activeTab 'classes'}}active{{/eq}}" data-tab="classes">
+
+    <div class="npcforge-field">
+      <label>Paste class description</label>
+      <textarea class="npcforge-class-textarea" rows="4" placeholder="Paste class or subclass description..."></textarea>
+      <button class="npcforge-import-class-btn" style="margin-top:4px;width:100%">Import class</button>
+    </div>
+
+    <div class="npcforge-status" style="display:none"></div>
+
+    <div style="margin-top:8px; font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--color-text-dark-secondary); padding-bottom:4px; border-bottom:1px solid var(--color-border-light-tertiary);">
+      Saved Classes ({{classes.length}})
+    </div>
+
+    {{#each classes}}
+    <div class="npcforge-entry" data-id="{{id}}">
+      <div class="npcforge-entry-header">
+        <span class="npcforge-entry-name">{{name}}</span>
+        <span class="npcforge-entry-source {{#if isHomebrew}}homebrew{{/if}}">{{source}}</span>
+      </div>
+    </div>
+    {{else}}
+    <div style="text-align:center;color:var(--color-text-dark-secondary);font-size:11px;padding:12px 0">
+      No custom classes yet.
+    </div>
+    {{/each}}
+  </div>
+
+  {{!-- ══ SETTINGS TAB ═════════════════════════════════════════════════════ --}}
+  <div class="npcforge-panel {{#eq activeTab 'settings'}}active{{/eq}}" data-tab="settings">
+    <div class="npcforge-settings">
+
+      <h3>AI Keys</h3>
+
+      <div class="npcforge-field">
+        <label>Anthropic API Key (Claude)</label>
+        <input type="password" name="anthropicKey" placeholder="sk-ant-..." value="">
+      </div>
+
+      <h3>Image Generation</h3>
+
+      <div class="npcforge-field">
+        <label>Image Provider</label>
+        <select name="imageProvider">
+          <option value="imagen">Google Imagen 3 (recommended)</option>
+          <option value="dalle">OpenAI DALL-E 3</option>
+        </select>
+      </div>
+
+      <div class="npcforge-field">
+        <label>Image API Key</label>
+        <input type="password" name="imageApiKey" placeholder="Gemini or OpenAI key..." value="">
+      </div>
+
+      <h3>UI</h3>
+
+      <div class="npcforge-field">
+        <label>Builder Position</label>
+        <select name="builderPosition">
+          <option value="sidebar">Option A – Sidebar panel</option>
+          <option value="actor">Option B – Actor tab</option>
+        </select>
+      </div>
+
+      <button class="npcforge-save-settings" style="width:100%;margin-top:8px">Save Settings</button>
+
+    </div>
+  </div>
+
+</div>
