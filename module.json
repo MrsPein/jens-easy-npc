@@ -1,22 +1,15 @@
 {
   "id": "npc-forge",
   "title": "Jen's easy NPC",
-  "description": "Foundry VTT module for AI-powered NPC generation with custom race/class database and portrait creation.",
-  "version": "0.1.0",
-  "compatibility": {
-    "minimum": "13",
-    "verified": "13"
-  },
-  "relationships": {
-    "systems": [{ "id": "dnd5e" }]
-  },
+  "description": "AI-powered NPC generator for Foundry VTT",
+  "version": "0.2.0",
+  "compatibility": { "minimum": "13", "verified": "13" },
+  "relationships": { "systems": [{ "id": "dnd5e" }] },
   "authors": [{ "name": "MrsPein" }],
   "esmodules": ["scripts/main.js"],
-  "scripts": [],
   "styles": ["styles/npc-forge.css", "styles/dropdown.css"],
   "languages": [{ "lang": "en", "name": "English", "path": "lang/en.json" }],
   "url": "https://github.com/MrsPein/jens-easy-npc",
   "manifest": "https://raw.githubusercontent.com/MrsPein/jens-easy-npc/main/module.json",
-  "download": "https://github.com/MrsPein/jens-easy-npc/releases/download/v0.1.0/jens-easy-npc.zip",
-  "type": "module"
+  "download": "https://github.com/MrsPein/jens-easy-npc/releases/download/v0.2.0/jens-easy-npc.zip"
 }
