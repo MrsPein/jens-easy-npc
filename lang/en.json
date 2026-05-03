@@ -1,0 +1,10 @@
+{
+  "NPCFORGE.Title": "NPC Forge",
+  "NPCFORGE.SidebarTooltip": "NPC Forge",
+  "NPCFORGE.TabRaces": "Races",
+  "NPCFORGE.TabClasses": "Classes",
+  "NPCFORGE.TabCreate": "Create NPC",
+  "NPCFORGE.TabSettings": "Settings",
+  "NPCFORGE.Import": "Import from PDF / Image / Text",
+  "NPCFORGE.Generate": "Generate NPC"
+}
