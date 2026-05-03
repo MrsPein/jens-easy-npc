@@ -2,7 +2,7 @@
   "id": "npc-forge",
   "title": "Jen's easy NPC",
   "description": "AI-powered NPC generator for Foundry VTT",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "compatibility": { "minimum": "13", "verified": "13" },
   "relationships": { "systems": [{ "id": "dnd5e" }] },
   "authors": [{ "name": "MrsPein" }],
@@ -11,5 +11,5 @@
   "languages": [{ "lang": "en", "name": "English", "path": "lang/en.json" }],
   "url": "https://github.com/MrsPein/jens-easy-npc",
   "manifest": "https://raw.githubusercontent.com/MrsPein/jens-easy-npc/main/module.json",
-  "download": "https://github.com/MrsPein/jens-easy-npc/releases/download/v0.2.0/jens-easy-npc.zip"
+  "download": "https://github.com/MrsPein/jens-easy-npc/releases/download/v0.3.0/jens-easy-npc.zip"
 }
