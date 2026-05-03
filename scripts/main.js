@@ -242,10 +242,10 @@ class NpcForgePanel extends Application {
     this._setStatus(root, "Analysing with Claude...", "running");
     try {
       const card = await this._callClaude(
-        `You are a D&D 5e race extractor. Return ONLY valid JSON with fields: name, source, description, appearance{description,inspiration,skinColors[],eyeColors[],heightRange,distinctiveFeatures[]}, traits{creatureType,size,speed{walk,swim,fly},abilityScoreIncreases,age{adulthood,lifespan},alignment,languages[],racialFeatures[{name,description}]}, culture{homeland,values[],habits[],likes[],dislikes[]}, names{examples[]}, npcHints{portraitPromptBase}`,
-        `Extract race data from:
-
-${text}`
+        `You are a D&D 5e race extractor. Extract race data and return ONLY a single valid JSON object. No markdown fences, no explanation, no extra text. Start directly with { and end with }.
+Required fields: name, source, description, appearance{description,inspiration,skinColors[],eyeColors[],heightRange,weightRange,distinctiveFeatures[]}, traits{creatureType,size,speed{walk,swim,fly},abilityScoreIncreases,typicalAbilityScores[],age{adulthood,lifespan,description},alignment,languages[],darkvision,racialFeatures[{name,description,mechanics}]}, subtypes[{name,description,additionalFeatures[{name,description}]}], culture{homeland,patronDeity,values[],habits[],likes[],dislikes[]}, names{naming_conventions,examples[],familyNames[]}, npcHints{personalityTraits[],occupations[],portraitPromptBase}`,
+        `Extract ALL race data from this text. Return ONLY the JSON:\n\n${text}`,
+        4000
       );
       const data = JSON.parse(card.replace(/\`\`\`json|\`\`\`/g,"").trim());
       data.id = foundry.utils.randomID();
