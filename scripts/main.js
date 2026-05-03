@@ -62,8 +62,7 @@ Hooks.once("init", () => {
     name: "Anthropic / OpenRouter API Key", scope: "world", config: true, type: String, default: ""
   });
   game.settings.register("npc-forge", "imageProvider", {
-    name: "Image Generator", scope: "world", config: true, type: String,
-    choices: { "imagen": "Google Imagen 3", "dalle": "OpenAI DALL-E 3" }, default: "imagen"
+    name: "Image Generator", scope: "world", config: false, type: String, default: "imagen"
   });
   game.settings.register("npc-forge", "imageApiKey", {
     name: "Image API Key", scope: "world", config: true, type: String, default: ""
@@ -230,15 +229,8 @@ class NpcForgePanel extends Application {
     <input type="password" id="nf-anthropic-key" placeholder="sk-ant-... or sk-or-...">
   </div>
   <div class="nf-field">
-    <label>Image Generator</label>
-    <select id="nf-image-provider">
-      <option value="imagen">Google Imagen 3 (recommended)</option>
-      <option value="dalle">OpenAI DALL-E 3</option>
-    </select>
-  </div>
-  <div class="nf-field">
-    <label>Image API Key</label>
-    <input type="password" id="nf-image-key" placeholder="Gemini or OpenAI key...">
+    <label>Image API Key (Google Gemini)</label>
+    <input type="password" id="nf-image-key" placeholder="AIza... (from aistudio.google.com)">
   </div>
   <button class="nf-btn" id="nf-save-settings" style="margin-top:8px">Save Settings</button>
   <div class="nf-status" id="nf-settings-status"></div>
@@ -555,43 +547,33 @@ Make portraitPrompt very detailed with exact appearance, clothing matching wealt
       let portraitPath = "icons/svg/mystery-man.svg";
       try {
         const imageKey = game.settings.get("npc-forge","imageApiKey");
-        const provider = game.settings.get("npc-forge","imageProvider");
         if (imageKey) {
           let imageDataUrl;
-          if (provider === "dalle") {
-            const ir = await fetch("https://api.openai.com/v1/images/generations", {
-              method:"POST", headers:{"Content-Type":"application/json","Authorization":`Bearer ${imageKey}`},
-              body: JSON.stringify({model:"dall-e-3",prompt:npcData.portraitPrompt.slice(0,4000),n:1,size:"1024x1024",quality:"standard",response_format:"b64_json"})
-            });
-            const id = await ir.json();
-            imageDataUrl = `data:image/png;base64,${id.data?.[0]?.b64_json}`;
-          } else {
-            // Use Gemini 2.5 Flash Image (free tier, 500/day)
-            const ir = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${imageKey}`, {
-              method:"POST", headers:{"Content-Type":"application/json"},
-              body: JSON.stringify({
-                contents:[{parts:[{text: npcData.portraitPrompt + ", fantasy portrait style, highly detailed, painterly illustration"}]}],
-                generationConfig:{responseModalities:["IMAGE","TEXT"]}
-              })
-            });
-            const id = await ir.json();
-            console.log("NPC Forge | Gemini response:", JSON.stringify(id).substring(0,300));
-            const imgPart = id.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-            if (imgPart?.inlineData?.data) {
-              imageDataUrl = `data:${imgPart.inlineData.mimeType||"image/png"};base64,${imgPart.inlineData.data}`;
-            }
+          // Always use Gemini Flash Image (free tier, 500/day)
+          const ir = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${imageKey}`, {
+            method:"POST", headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({
+              contents:[{parts:[{text: npcData.portraitPrompt + ", fantasy portrait style, highly detailed, painterly illustration"}]}],
+              generationConfig:{responseModalities:["IMAGE","TEXT"]}
+            })
+          });
+          const id = await ir.json();
+          console.log("NPC Forge | Gemini response:", JSON.stringify(id).substring(0,300));
+          const imgPart = id.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+          if (imgPart?.inlineData?.data) {
+            imageDataUrl = `data:${imgPart.inlineData.mimeType||"image/png"};base64,${imgPart.inlineData.data}`;
           }
           if (imageDataUrl && !imageDataUrl.includes("undefined")) {
             const res = await fetch(imageDataUrl);
             const blob = await res.blob();
             const fname = `${npcData.name.toLowerCase().replace(/[^a-z0-9]+/g,"-")}-${Date.now()}.png`;
             const file = new File([blob], fname, {type:"image/png"});
-            try { await FilePicker.createDirectory("data","npc-forge"); } catch(e) {}
-            const up = await FilePicker.upload("data","npc-forge",file,{});
+            try { await (foundry.applications.apps.FilePicker?.implementation || FilePicker).createDirectory("data","npc-forge"); } catch(e) {}
+            const up = await (foundry.applications.apps.FilePicker?.implementation || FilePicker).upload("data","npc-forge",file,{});
             portraitPath = up.path;
           }
         }
-      } catch(e) { console.warn("NPC Forge | Portrait generation failed:", e); }
+      } catch(e) { console.warn("NPC Forge | Portrait generation failed:", e.message); }
 
       this._setStatus(root, "Step 3/3: Creating actor...", "running");
       const actor = await Actor.create({
