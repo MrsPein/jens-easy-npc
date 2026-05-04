@@ -1,6 +1,6 @@
 {
   "id": "npc-forge",
-  "title": "Jen's easy NPC",
+  "title": "Jens easy NPC",
   "description": "AI-powered NPC generator for Foundry VTT",
   "version": "0.3.0",
   "compatibility": { "minimum": "13", "verified": "13" },
