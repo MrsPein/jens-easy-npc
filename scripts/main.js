@@ -190,27 +190,33 @@ const NfSync = {
       return item;
     } catch(e) { console.warn("NPC Forge | sync failed:", e); }
   },
+  _isRealSpecies(name) {
+    const n = name.toLowerCase();
+    const exclude = ["breath weapon","lore","feat","trait","ability","attack","strike","armor","casing","amorphous","artificer","subrace","variant","legacy","action","feature","fighting style","invocation","maneuver","eldritch","divine","arcane","infusion"];
+    return !exclude.some(kw => n.includes(kw));
+  },
   async getAllSpecies() {
     const results = new Map();
-    // From our race DB
+    // From our race DB (highest priority)
     try {
       const db = JSON.parse(game.settings.get("npc-forge","raceDatabase"));
       db.forEach(r=>{ if(r.name) results.set(r.name.toLowerCase(),{name:r.name,source:"Custom",data:r}); });
     } catch(e){}
-    // From Foundry Items folder "Species"
+    // From Foundry world items - only type="species"
     game.items.forEach(i=>{
-      if(i.folder?.name==="Species"||i.type==="species") {
+      if(i.type==="species" && this._isRealSpecies(i.name)) {
         const k=i.name.toLowerCase();
         if(!results.has(k)) results.set(k,{name:i.name,source:"Foundry",data:null,item:i});
       }
     });
-    // From all packs with species/race items
+    // From packs - STRICTLY only type="species"
     for(const pack of game.packs) {
       try {
-        const idx = await pack.getIndex({fields:["name","type","folder"]});
+        const idx = await pack.getIndex({fields:["name","type"]});
         for(const e of idx) {
+          if(e.type !== "species") continue;
           const k=e.name.toLowerCase();
-          if(!results.has(k)&&(e.type==="species"||pack.metadata.label?.toLowerCase().includes("species")||pack.metadata.label?.toLowerCase().includes("race"))) {
+          if(!results.has(k) && this._isRealSpecies(e.name)) {
             results.set(k,{name:e.name,source:pack.metadata.label,data:null,packId:pack.collection,docId:e._id});
           }
         }
@@ -959,15 +965,17 @@ Return this JSON structure exactly:
       for(const itemName of itemsToLoad.slice(0,6)) {
         try {
           const item = await NfSync.findItemInFoundry(itemName, itemsCompId, fuzzy);
-          if(item) loadedItems.push(item.toObject());
-        } catch(e){ console.warn("NPC Forge | item not found:",itemName); }
+          if(item) { loadedItems.push(item.toObject()); console.log("NPC Forge | loaded item:", itemName); }
+          else console.warn("NPC Forge | item not found in any pack:", itemName);
+        } catch(e){ console.warn("NPC Forge | item error:",itemName, e.message); }
       }
       const loadedSpells = [];
       for(const spellName of spellsToLoad.slice(0,8)) {
         try {
           const spell = await NfSync.findItemInFoundry(spellName, spellsCompId, fuzzy);
-          if(spell) loadedSpells.push(spell.toObject());
-        } catch(e){ console.warn("NPC Forge | spell not found:",spellName); }
+          if(spell) { loadedSpells.push(spell.toObject()); console.log("NPC Forge | loaded spell:", spellName); }
+          else console.warn("NPC Forge | spell not found in any pack:", spellName);
+        } catch(e){ console.warn("NPC Forge | spell error:",spellName, e.message); }
       }
 
       this._setStatus(root,t("step3"),"running","nf-create-status");
@@ -981,6 +989,16 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
 
       // Alignment string
       const alignStr = npcData.alignment||"";
+
+      // Currency based on wealth
+      const currencyMap = {
+        poor:{cp:Math.floor(Math.random()*20),sp:Math.floor(Math.random()*5),gp:0,ep:0,pp:0},
+        modest:{cp:0,sp:Math.floor(Math.random()*20)+5,gp:Math.floor(Math.random()*3),ep:0,pp:0},
+        normal:{cp:0,sp:Math.floor(Math.random()*10),gp:Math.floor(Math.random()*10)+2,ep:0,pp:0},
+        wealthy:{cp:0,sp:0,gp:Math.floor(Math.random()*50)+20,ep:Math.floor(Math.random()*5),pp:0},
+        noble:{cp:0,sp:0,gp:Math.floor(Math.random()*200)+100,ep:0,pp:Math.floor(Math.random()*10)+2}
+      };
+      const currency = currencyMap[wealth]||currencyMap.normal;
 
       const actor = await Actor.create({
         name: npcData.name, type:"npc", img:"icons/svg/mystery-man.svg",
@@ -1013,6 +1031,7 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
             size:raceSize,
             languages:{value:allLangs}
           },
+          currency:currency,
           ...(spellcasting?{attributes:{spellcasting}}:{})
         }
       });
