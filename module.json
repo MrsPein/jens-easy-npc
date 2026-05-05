@@ -2,7 +2,7 @@
   "id": "npc-forge",
   "title": "Jens easy NPC",
   "description": "AI-powered NPC generator for Foundry VTT",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "compatibility": {
     "minimum": "13",
     "verified": "13"
@@ -35,7 +35,7 @@
   ],
   "url": "https://github.com/MrsPein/jens-easy-npc",
   "manifest": "https://raw.githubusercontent.com/MrsPein/jens-easy-npc/main/module.json",
-  "download": "https://github.com/MrsPein/jens-easy-npc/releases/download/v0.5.3/jens-easy-npc.zip",
+  "download": "https://github.com/MrsPein/jens-easy-npc/releases/download/v0.5.4/jens-easy-npc.zip",
   "readme": "https://github.com/MrsPein/jens-easy-npc#readme",
   "license": "LICENSE"
 }
