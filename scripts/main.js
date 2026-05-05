@@ -1131,32 +1131,71 @@ Return this JSON structure exactly:
         if(unarmed) addItem(unarmed);
       } catch(e){}
 
-      // Extract physical items from special wish and search for them
+      // Extract physical items from special wish
       if(wish) {
-        // Common items that might be mentioned in wishes
         const wishItemKeywords = [
-          ["lampe","lantern"],["laterne","lantern"],["lantern","lantern"],
-          ["fackel","torch"],["torch","torch"],
-          ["stab","quarterstaff"],["staff","quarterstaff"],
-          ["dolch","dagger"],["dagger","dagger"],
-          ["schwert","longsword"],["sword","longsword"],
-          ["bogen","shortbow"],["bow","shortbow"],
-          ["schild","shield"],["shield","shield"],
-          ["buch","book"],["book","book"],
-          ["kette","chain"],["amulett","amulet"],
-          ["ring","signet ring"],["harfe","lyre"],["lute","lute"],
-          ["geige","lute"],["instrument","lute"],
-          ["seil","rope"],["rope","rope"],
-          ["map","map"],["karte","map"],
+          ["lampe","Lantern","lantern"],["laterne","Lantern","lantern"],["lantern","Lantern","lantern"],
+          ["fackel","Torch","torch"],["torch","Torch","torch"],
+          ["stab","Staff","quarterstaff"],["staff","Staff","quarterstaff"],
+          ["dolch","Dagger","dagger"],["dagger","Dagger","dagger"],
+          ["schwert","Longsword","longsword"],["sword","Longsword","longsword"],
+          ["bogen","Shortbow","shortbow"],["bow","Shortbow","shortbow"],
+          ["schild","Shield","shield"],["shield","Shield","shield"],
+          ["buch","Book","book"],["book","Book","book"],
+          ["kette","Necklace","amulet"],["amulett","Amulet","amulet"],
+          ["ring","Ring","signet ring"],["harfe","Lyre","lyre"],
+          ["lute","Lute","lute"],["geige","Lute","lute"],
+          ["seil","Rope","rope"],["rope","Rope","rope"],
+          ["karte","Map","map"],["map","Map","map"],
+          ["teddy","Stuffed Animal","stuffed animal"],["puppe","Doll","doll"],
+          ["fuchs","Fox Figurine","figurine"],["tier","Animal Figure","figurine"],
         ];
         const wishLower = wish.toLowerCase();
-        for(const [keyword, itemName] of wishItemKeywords) {
+        for(const [keyword, displayName, searchName] of wishItemKeywords) {
           if(wishLower.includes(keyword)) {
             try {
-              const wishItem = await NfSync.findRawItemData(itemName, itemsCompId, fuzzy);
-              if(wishItem) addItem(wishItem);
+              const wishItem = await NfSync.findRawItemData(searchName, itemsCompId, fuzzy);
+              if(wishItem) {
+                addItem(wishItem);
+              } else {
+                // Create as Loot item with description
+                const lootItem = {
+                  name: displayName,
+                  type: "loot",
+                  img: "icons/containers/bags/pack-simple-leather-tan.webp",
+                  system: {
+                    description: {value: `<p>A ${displayName.toLowerCase()} belonging to this character. ${wish.substring(0,100)}</p>`},
+                    weight: {value:0.5},
+                    price: {value:1, denomination:"gp"},
+                    quantity: 1,
+                    rarity: "common"
+                  }
+                };
+                addItem(lootItem);
+                console.log("NPC Forge | created loot item:", displayName);
+              }
             } catch(e){}
           }
+        }
+        // Also create a loot item for the entire special wish if it mentions unique objects
+        // Check for possessive words indicating unique items
+        const uniquePatterns = [/erbstück/i,/heirloom/i,/geschenk/i,/gift from/i,/von (seinem|ihrer|ihrem|seinem)/i,/gravur/i,/engraved/i,/besonder/i,/special/i];
+        if(uniquePatterns.some(p=>p.test(wish)) && !wishItemKeywords.some(([k])=>wish.toLowerCase().includes(k))) {
+          // Extract a name from the wish (first noun-like word)
+          const lootName = wish.split(/[\s,]+/).filter(w=>w.length>4&&!/^(hat|eine|einen|einem|seiner|ihrer|immer|dabei|nach|auch|aber|oder)$/i.test(w))[0]||"Special Item";
+          const uniqueLoot = {
+            name: lootName.charAt(0).toUpperCase()+lootName.slice(1),
+            type: "loot",
+            img: "icons/containers/bags/pack-simple-leather-tan.webp",
+            system: {
+              description: {value: `<p>${wish}</p>`},
+              weight: {value:0.1},
+              price: {value:5, denomination:"gp"},
+              quantity: 1,
+              rarity: "uncommon"
+            }
+          };
+          addItem(uniqueLoot);
         }
       }
 
@@ -1169,6 +1208,10 @@ Return this JSON structure exactly:
           else console.warn("NPC Forge | spell not found:", spellName);
         } catch(e){ console.warn("NPC Forge | spell error:", spellName, e.message); }
       }
+
+      // Calculate class level from CR
+      const classLevel = cr<=0?1:cr<=2?Math.max(1,Math.round(cr*2)):cr<=5?Math.round(cr*1.5):cr<=10?Math.round(cr*1.2):Math.round(cr);
+      const classLevelCapped = Math.min(20, Math.max(1, classLevel));
 
       this._setStatus(root,t("step3"),"running","nf-create-status");
 
@@ -1219,14 +1262,18 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
         } catch(e){ console.warn("NPC Forge | species feature load failed:", e.message); }
       }
 
-      // Load class item from pack (brings class features)
+      // Load class item from pack
       const classFeatureItems = [];
       if(className) {
         try {
-          const classPack = game.packs.get("dnd5e.classes");
-          if(classPack) {
+          // Try dnd5e.classes first, then dnd5e.classes24
+          for(const packId of ["dnd5e.classes","dnd5e.classes24"]) {
+            const classPack = game.packs.get(packId);
+            if(!classPack) continue;
             const idx = await classPack.getIndex({fields:["name","type"]});
-            const classEntry = idx.contents.find(e=>e.name.toLowerCase()===className.toLowerCase());
+            const classEntry = idx.contents.find(e=>
+              e.type==="class" && e.name.toLowerCase()===className.toLowerCase()
+            );
             if(classEntry) {
               const classDoc = await classPack.getDocument(classEntry._id);
               if(classDoc) {
@@ -1235,9 +1282,57 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
                 classFeatureItems.push(raw);
                 console.log("NPC Forge | loaded class:", className);
               }
+              break;
+            }
+          }
+          // Also try world items (Plutonium-imported classes)
+          if(classFeatureItems.length===0) {
+            const worldClass = game.items.find(i=>i.type==="class"&&i.name.toLowerCase()===className.toLowerCase());
+            if(worldClass) {
+              const raw = worldClass.toObject(); delete raw._id; delete raw.ownership;
+              classFeatureItems.push(raw);
+              console.log("NPC Forge | loaded class from world:", className);
             }
           }
         } catch(e){ console.warn("NPC Forge | class load failed:", e.message); }
+      }
+
+      // Load Background item from pack/world (brings features, equipment, feats)
+      const bgFeatureItems = [];
+      const bgName3 = this._npcParams.background||"";
+      if(bgName3) {
+        try {
+          // Search in world items first (Plutonium-imported backgrounds)
+          const worldBg = game.items.find(i=>
+            i.type==="background" &&
+            i.name.toLowerCase()===bgName3.toLowerCase()
+          );
+          if(worldBg) {
+            const raw = worldBg.toObject(); delete raw._id; delete raw.ownership;
+            bgFeatureItems.push(raw);
+            console.log("NPC Forge | loaded background from world:", bgName3);
+          } else {
+            // Try packs
+            for(const packId of ["dnd5e.origins24","dnd5e.backgrounds"]) {
+              const pack = game.packs.get(packId);
+              if(!pack) continue;
+              const idx = await pack.getIndex({fields:["name","type"]});
+              const bgEntry = idx.contents.find(e=>
+                e.name.toLowerCase()===bgName3.toLowerCase()||
+                e.name.toLowerCase().includes(bgName3.toLowerCase())
+              );
+              if(bgEntry) {
+                const doc = await pack.getDocument(bgEntry._id);
+                if(doc) {
+                  const raw = doc.toObject(); delete raw._id; delete raw.ownership;
+                  bgFeatureItems.push(raw);
+                  console.log("NPC Forge | loaded background:", bgName3);
+                }
+                break;
+              }
+            }
+          }
+        } catch(e){ console.warn("NPC Forge | background load failed:", e.message); }
       }
 
       const actor = await Actor.create({
@@ -1246,7 +1341,7 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
           details:{
             biography:{value:bio},
             race:npcData.race||raceName||"",
-            background:npcData.background||"",
+            background:npcData.background||bgName3||"",
             alignment:alignStr,
             cr:cr,
             source:"Jen's easy NPC",
@@ -1272,12 +1367,12 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
             languages:{value:allLangs}
           },
           currency:currency,
-          ...(spellcasting?{attributes:{spellcasting}}:{})
+          ...(spellcasting?{attributes:{spellcasting, prof: NF_CR.getProfBonus(cr)}}:{})
         }
       });
 
-      // Add items + spells + race features + class
-      const allItems = [...loadedItems,...loadedSpells,...raceFeatureItems,...classFeatureItems];
+      // Add items + spells + race + class + background
+      const allItems = [...loadedItems,...loadedSpells,...raceFeatureItems,...classFeatureItems,...bgFeatureItems];
       if(allItems.length>0) {
         try {
           await actor.createEmbeddedDocuments("Item", allItems, {keepId:false, render:false});
