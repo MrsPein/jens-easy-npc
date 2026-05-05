@@ -290,51 +290,88 @@ const NfSync = {
       return matches/q.length > (1-threshold);
     });
   },
-  // Item types that are valid for NPC equipment (not species features, class features etc.)
+  // Item types valid for NPC equipment
   _validItemTypes: ["weapon","equipment","consumable","tool","loot","container","backpack"],
-  async findItemInFoundry(name, packId, threshold=0.4) {
-    const isValidItem = (doc) => {
-      if(!doc) return false;
-      // Skip species/race/class/feat type items
-      if(["species","race","class","subclass","feat","background"].includes(doc.type)) return false;
-      return true;
-    };
-    // Search in specific pack first
-    if(packId) {
-      try {
-        const pack = game.packs.get(packId);
-        if(pack) {
-          const idx = await pack.getIndex({fields:["name","type"]});
-          const validIdx = idx.contents.filter(e=>this._validItemTypes.includes(e.type));
-          const found = this.fuzzyFind(name, validIdx, "name", threshold);
-          if(found.length>0) {
-            const doc = await pack.getDocument(found[0]._id);
-            if(isValidItem(doc)) return doc;
-          }
-        }
-      } catch(e){}
-    }
-    // Search in game.items - only valid types
-    const worldItems = game.items.contents.filter(i=>this._validItemTypes.includes(i.type));
-    const worldFound = this.fuzzyFind(name, worldItems, "name", threshold);
-    if(worldFound.length>0) return worldFound[0];
-    // Search all packs - skip species/race/class/feat packs
-    const skipPackIds = ["races","species","classes","subclasses","classfeatures","racefeatures","speciesfeatures","monsterfeatures","feats","backgrounds"];
-    for(const pack of game.packs) {
-      const pid = pack.collection.toLowerCase();
-      if(skipPackIds.some(s=>pid.includes(s))) continue;
+  // Priority packs for items and spells
+  _itemPacks: ["dnd5e.items","dnd5e.equipment24","dnd5e.tradegoods"],
+  _spellPacks: ["dnd5e.spells","dnd5e.spells24"],
+
+  // Returns raw item data (NOT a Document) to bypass Plutonium hooks
+  async findRawItemData(name, preferredPackId, threshold=0.4) {
+    const validTypes = this._validItemTypes;
+    const skipPacks = ["races","species","classes","subclasses","classfeatures","racefeatures","speciesfeatures","monsterfeatures","feats","backgrounds","heroes","monsters","actors"];
+
+    // Helper: search index and return raw data
+    const searchPack = async (pack) => {
       try {
         const idx = await pack.getIndex({fields:["name","type"]});
-        const validIdx = idx.contents.filter(e=>this._validItemTypes.includes(e.type));
-        if(validIdx.length===0) continue;
-        const found = this.fuzzyFind(name, validIdx, "name", threshold);
-        if(found.length>0) {
-          const doc = await pack.getDocument(found[0]._id);
-          if(isValidItem(doc)) return doc;
-        }
-      } catch(e){}
+        const valid = idx.contents.filter(e=>validTypes.includes(e.type));
+        const found = this.fuzzyFind(name, valid, "name", threshold);
+        if(found.length===0) return null;
+        // Get raw data without triggering Plutonium - use pack source directly
+        const source = await pack.getDocument(found[0]._id);
+        if(!source) return null;
+        const raw = source.toObject();
+        delete raw._id;
+        delete raw.ownership;
+        return raw;
+      } catch(e){ return null; }
+    };
+
+    // 1. Try preferred pack
+    if(preferredPackId) {
+      const pack = game.packs.get(preferredPackId);
+      if(pack) { const r = await searchPack(pack); if(r) return r; }
+    }
+    // 2. Try priority item packs
+    for(const pid of this._itemPacks) {
+      const pack = game.packs.get(pid);
+      if(pack) { const r = await searchPack(pack); if(r) return r; }
+    }
+    // 3. Try world items (raw)
+    const worldItems = game.items.contents.filter(i=>validTypes.includes(i.type));
+    const wFound = this.fuzzyFind(name, worldItems, "name", threshold);
+    if(wFound.length>0) { const raw=wFound[0].toObject(); delete raw._id; return raw; }
+    // 4. Search all remaining packs
+    for(const pack of game.packs) {
+      const pid = pack.collection.toLowerCase();
+      if(skipPacks.some(s=>pid.includes(s))) continue;
+      const r = await searchPack(pack);
+      if(r) return r;
     }
     return null;
+  },
+
+  // Returns raw spell data
+  async findRawSpellData(name, preferredPackId, threshold=0.4) {
+    const searchPack = async (pack) => {
+      try {
+        const idx = await pack.getIndex({fields:["name","type"]});
+        const valid = idx.contents.filter(e=>e.type==="spell");
+        const found = this.fuzzyFind(name, valid, "name", threshold);
+        if(found.length===0) return null;
+        const source = await pack.getDocument(found[0]._id);
+        if(!source) return null;
+        const raw = source.toObject();
+        delete raw._id;
+        delete raw.ownership;
+        return raw;
+      } catch(e){ return null; }
+    };
+    if(preferredPackId) {
+      const pack = game.packs.get(preferredPackId);
+      if(pack) { const r = await searchPack(pack); if(r) return r; }
+    }
+    for(const pid of this._spellPacks) {
+      const pack = game.packs.get(pid);
+      if(pack) { const r = await searchPack(pack); if(r) return r; }
+    }
+    return null;
+  },
+
+  // Legacy wrapper - kept for compatibility
+  async findItemInFoundry(name, packId, threshold=0.4) {
+    return this.findRawItemData(name, packId, threshold);
   }
 };
 
@@ -905,10 +942,13 @@ class NpcForgePanel extends Application {
         raceProfile = racesDb.find(r=>r.name===raceName);
       }
 
-      // Get background profile
-      let bgProfile = null;
+      // Get background profile from selection
       let bgsDb=[]; try{bgsDb=JSON.parse(game.settings.get("npc-forge","bgDatabase"));}catch(e){}
-      if(bgsDb.length>0) bgProfile = bgsDb[Math.floor(Math.random()*bgsDb.length)];
+      const selectedBgName = this._npcParams.background||"";
+      let bgProfile = null;
+      if(selectedBgName) {
+        bgProfile = bgsDb.find(b=>b.name===selectedBgName) || {name:selectedBgName, description:""};
+      }
 
       // Build race description for prompt
       const raceDesc = raceProfile
@@ -1003,43 +1043,43 @@ Return this JSON structure exactly:
       const itemsToLoad = npcData.equipment?.length>0 ? npcData.equipment : this._getDefaultItems(classKey,wealth);
       const spellsToLoad = spellcasting&&npcData.spells?.length>0 ? npcData.spells : (spellcasting?this._getDefaultSpells(classKey,cr):[]);
 
-      // Load items - use toObject() to get plain data, prevents Plutonium popup
+      // Load items as raw data - bypasses Plutonium hooks completely
       const loadedItems = [];
+      const addedItemNames = new Set();
+      const addItem = (raw) => {
+        if(raw && !addedItemNames.has(raw.name)) {
+          addedItemNames.add(raw.name);
+          loadedItems.push(raw);
+        }
+      };
+
+      // Class equipment
       for(const itemName of itemsToLoad.slice(0,6)) {
         try {
-          const item = await NfSync.findItemInFoundry(itemName, itemsCompId, fuzzy);
-          if(item) {
-            const data = item.toObject();
-            delete data._id; // remove ID so Foundry creates a new embedded copy
-            loadedItems.push(data);
-            console.log("NPC Forge | loaded item:", itemName);
-          } else console.warn("NPC Forge | item not found:", itemName);
-        } catch(e){ console.warn("NPC Forge | item error:",itemName, e.message); }
+          const raw = await NfSync.findRawItemData(itemName, itemsCompId, fuzzy);
+          if(raw) { addItem(raw); console.log("NPC Forge | item:", raw.name); }
+          else console.warn("NPC Forge | not found:", itemName);
+        } catch(e){ console.warn("NPC Forge | item error:", itemName, e.message); }
       }
+
+      // Background equipment
+      const selectedBg = this._npcParams.background || "";
+      const bgEquipment = this._getBackgroundItems(selectedBg||"artisan");
+      for(const itemName of bgEquipment.slice(0,4)) {
+        try {
+          const raw = await NfSync.findRawItemData(itemName, itemsCompId, fuzzy);
+          if(raw) addItem(raw);
+        } catch(e){}
+      }
+
+      // Spells as raw data
       const loadedSpells = [];
       for(const spellName of spellsToLoad.slice(0,8)) {
         try {
-          const spell = await NfSync.findItemInFoundry(spellName, spellsCompId, fuzzy);
-          if(spell) {
-            const data = spell.toObject();
-            delete data._id;
-            loadedSpells.push(data);
-            console.log("NPC Forge | loaded spell:", spellName);
-          } else console.warn("NPC Forge | spell not found:", spellName);
-        } catch(e){ console.warn("NPC Forge | spell error:",spellName, e.message); }
-      }
-      // Load background equipment
-      const selectedBg = this._npcParams.background || "Artisan";
-      const bgEquipment = this._getBackgroundItems(selectedBg);
-      for(const itemName of bgEquipment) {
-        try {
-          const item = await NfSync.findItemInFoundry(itemName, itemsCompId, fuzzy);
-          if(item) {
-            const data = item.toObject();
-            delete data._id;
-            if(!loadedItems.find(i=>i.name===data.name)) loadedItems.push(data);
-          }
-        } catch(e){}
+          const raw = await NfSync.findRawSpellData(spellName, spellsCompId, fuzzy);
+          if(raw) { loadedSpells.push(raw); console.log("NPC Forge | spell:", raw.name); }
+          else console.warn("NPC Forge | spell not found:", spellName);
+        } catch(e){ console.warn("NPC Forge | spell error:", spellName, e.message); }
       }
 
       this._setStatus(root,t("step3"),"running","nf-create-status");
@@ -1101,10 +1141,14 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
         }
       });
 
-      // Add items + spells
+      // Add items + spells - keepId:false prevents Plutonium from treating these as imports
       const allItems = [...loadedItems,...loadedSpells];
       if(allItems.length>0) {
-        await actor.createEmbeddedDocuments("Item", allItems, {});
+        await actor.createEmbeddedDocuments("Item", allItems, {
+          keepId: false,
+          render: false,
+          keepEmbeddedIds: false
+        });
       }
 
       actor.sheet.render(true);
@@ -1146,21 +1190,27 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
 
   _getDefaultItems(classKey, wealth) {
     const byClass = {
-      barbarian:["Greataxe","Handaxe","Explorer's Pack"],
-      bard:["Rapier","Lute","Entertainer's Pack","Leather Armor"],
+      barbarian:["Greataxe","Handaxe","Handaxe","Leather Armor","Explorer's Pack"],
+      bard:["Rapier","Lute","Leather Armor","Dagger","Entertainer's Pack"],
       cleric:["Mace","Shield","Chain Mail","Holy Symbol","Priest's Pack"],
-      druid:["Quarterstaff","Leather Armor","Druidic Focus","Explorer's Pack"],
-      fighter:["Longsword","Shield","Chain Mail","Light Crossbow"],
-      monk:["Shortsword","Explorer's Pack"],
-      paladin:["Longsword","Shield","Chain Mail","Holy Symbol"],
-      ranger:["Longbow","Shortsword","Leather Armor","Explorer's Pack"],
-      rogue:["Rapier","Shortbow","Leather Armor","Thieves' Tools","Burglar's Pack"],
-      sorcerer:["Light Crossbow","Arcane Focus","Dungeoneer's Pack"],
-      warlock:["Light Crossbow","Arcane Focus","Scholar's Pack","Leather Armor"],
-      wizard:["Quarterstaff","Spellbook","Scholar's Pack","Arcane Focus"],
-      commoner:["Dagger","Common Clothes","Belt Pouch"]
+      druid:["Quarterstaff","Leather Armor","Druidic Focus","Explorer's Pack","Herbalism Kit"],
+      fighter:["Longsword","Shield","Chain Mail","Light Crossbow","Bolt","Dungeoneer's Pack"],
+      monk:["Shortsword","Dart","Explorer's Pack"],
+      paladin:["Longsword","Shield","Chain Mail","Holy Symbol","Priest's Pack"],
+      ranger:["Longbow","Arrow","Shortsword","Leather Armor","Explorer's Pack"],
+      rogue:["Rapier","Shortbow","Arrow","Leather Armor","Thieves' Tools","Burglar's Pack","Dagger"],
+      sorcerer:["Dagger","Component Pouch","Dungeoneer's Pack"],
+      warlock:["Light Crossbow","Bolt","Leather Armor","Component Pouch","Scholar's Pack"],
+      wizard:["Quarterstaff","Spellbook","Component Pouch","Scholar's Pack","Dagger"],
+      commoner:["Dagger","Common Clothes","Belt Pouch","Torch"]
     };
-    const wealthItems={noble:["Fine Clothes","Signet Ring"],wealthy:["Traveler's Clothes"],poor:[]};
+    const wealthItems={
+      noble:["Fine Clothes","Signet Ring","Purse"],
+      wealthy:["Traveler's Clothes","Belt Pouch"],
+      poor:["Traveler's Clothes"],
+      modest:["Common Clothes"],
+      normal:[]
+    };
     return [...(byClass[classKey]||byClass.commoner),...(wealthItems[wealth]||[])];
   }
 
