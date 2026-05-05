@@ -1142,7 +1142,7 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
       if(bg.includes(key)||key.includes(bg.split(" ")[0])) return items;
     }
     return ["Common Clothes","Belt Pouch"]; // default
-  },
+  }
 
   _getDefaultItems(classKey, wealth) {
     const byClass = {
