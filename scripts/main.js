@@ -1113,10 +1113,15 @@ Return this JSON structure exactly:
       // Background equipment
       const selectedBg = this._npcParams.background || "";
       const bgEquipment = this._getBackgroundItems(selectedBg||"artisan");
-      for(const itemName of bgEquipment.slice(0,4)) {
+      for(const itemName of bgEquipment.slice(0,5)) {
         try {
           const raw = await NfSync.findRawItemData(itemName, itemsCompId, fuzzy);
-          if(raw) addItem(raw);
+          if(raw) {
+            // Skip Common Clothes if we already have finer clothing
+            const hasFinerClothes = loadedItems.some(i=>i.name==="Fine Clothes"||i.name==="Traveler's Clothes"||i.name==="Vestments");
+            if(raw.name==="Common Clothes" && hasFinerClothes) continue;
+            addItem(raw);
+          }
         } catch(e){}
       }
 
@@ -1125,6 +1130,35 @@ Return this JSON structure exactly:
         const unarmed = await NfSync.findRawItemData("Unarmed Strike", itemsCompId, fuzzy);
         if(unarmed) addItem(unarmed);
       } catch(e){}
+
+      // Extract physical items from special wish and search for them
+      if(wish) {
+        // Common items that might be mentioned in wishes
+        const wishItemKeywords = [
+          ["lampe","lantern"],["laterne","lantern"],["lantern","lantern"],
+          ["fackel","torch"],["torch","torch"],
+          ["stab","quarterstaff"],["staff","quarterstaff"],
+          ["dolch","dagger"],["dagger","dagger"],
+          ["schwert","longsword"],["sword","longsword"],
+          ["bogen","shortbow"],["bow","shortbow"],
+          ["schild","shield"],["shield","shield"],
+          ["buch","book"],["book","book"],
+          ["kette","chain"],["amulett","amulet"],
+          ["ring","signet ring"],["harfe","lyre"],["lute","lute"],
+          ["geige","lute"],["instrument","lute"],
+          ["seil","rope"],["rope","rope"],
+          ["map","map"],["karte","map"],
+        ];
+        const wishLower = wish.toLowerCase();
+        for(const [keyword, itemName] of wishItemKeywords) {
+          if(wishLower.includes(keyword)) {
+            try {
+              const wishItem = await NfSync.findRawItemData(itemName, itemsCompId, fuzzy);
+              if(wishItem) addItem(wishItem);
+            } catch(e){}
+          }
+        }
+      }
 
       // Spells as raw data
       const loadedSpells = [];
@@ -1159,14 +1193,13 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
       };
       const currency = currencyMap[wealth]||currencyMap.normal;
 
-      // Load race/species features from Foundry pack if available
+      // Load race/species item from pack
       const raceFeatureItems = [];
       if(raceName) {
         try {
-          // Find the species item in packs
           for(const pack of game.packs) {
             const pid = pack.collection.toLowerCase();
-            if(pid.includes("classfeature")||pid.includes("monsterfeature")||pid.includes("spell")||pid.includes("item")) continue;
+            if(pid.includes("classfeature")||pid.includes("monsterfeature")||pid.includes("spell")||pid.includes("item")||pid.includes("background")) continue;
             const idx = await pack.getIndex({fields:["name","type"]});
             const speciesEntry = idx.contents.find(e=>
               (e.type==="species"||e.type==="race") &&
@@ -1175,19 +1208,36 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
             if(speciesEntry) {
               const speciesDoc = await pack.getDocument(speciesEntry._id);
               if(speciesDoc) {
-                // Get the embedded features/advancements as items
                 const raw = speciesDoc.toObject();
-                // Add the species item itself as a feature
-                const speciesRaw = {...raw};
-                delete speciesRaw._id;
-                delete speciesRaw.ownership;
-                raceFeatureItems.push(speciesRaw);
+                delete raw._id; delete raw.ownership;
+                raceFeatureItems.push(raw);
                 console.log("NPC Forge | loaded species:", raceName);
               }
               break;
             }
           }
         } catch(e){ console.warn("NPC Forge | species feature load failed:", e.message); }
+      }
+
+      // Load class item from pack (brings class features)
+      const classFeatureItems = [];
+      if(className) {
+        try {
+          const classPack = game.packs.get("dnd5e.classes");
+          if(classPack) {
+            const idx = await classPack.getIndex({fields:["name","type"]});
+            const classEntry = idx.contents.find(e=>e.name.toLowerCase()===className.toLowerCase());
+            if(classEntry) {
+              const classDoc = await classPack.getDocument(classEntry._id);
+              if(classDoc) {
+                const raw = classDoc.toObject();
+                delete raw._id; delete raw.ownership;
+                classFeatureItems.push(raw);
+                console.log("NPC Forge | loaded class:", className);
+              }
+            }
+          }
+        } catch(e){ console.warn("NPC Forge | class load failed:", e.message); }
       }
 
       const actor = await Actor.create({
@@ -1203,10 +1253,10 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
             type:{value:"humanoid",custom:npcData.race||raceName||""}
           },
           attributes:{
-            hp:{value:hp,max:hp},
+            hp:{value:hp, max:hp, min:0, temp:0},
             ac:{flat:ac},
-            movement:{walk:raceSpeed},
-            senses:{darkvision:raceDarkvision}
+            movement:{walk:raceSpeed, units:"ft"},
+            senses:{darkvision:raceDarkvision, units:"ft"}
           },
           abilities:{
             str:{value:scaledAbilities.str?.value||10,proficient:scaledAbilities.str?.proficient||0},
@@ -1226,8 +1276,8 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
         }
       });
 
-      // Add items + spells + race features
-      const allItems = [...loadedItems,...loadedSpells,...raceFeatureItems];
+      // Add items + spells + race features + class
+      const allItems = [...loadedItems,...loadedSpells,...raceFeatureItems,...classFeatureItems];
       if(allItems.length>0) {
         try {
           await actor.createEmbeddedDocuments("Item", allItems, {keepId:false, render:false});
@@ -1235,6 +1285,9 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
           console.warn("NPC Forge | item creation error:", e.message);
         }
       }
+
+      // Force HP update - dnd5e sometimes needs explicit update after create
+      await actor.update({"system.attributes.hp.value": hp, "system.attributes.hp.max": hp});
 
       actor.sheet.render(true);
       this._setStatus(root, t("done",npcData.name), "success","nf-create-status");
@@ -1248,27 +1301,35 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
 
   _getBackgroundItems(bgName) {
     const bg = (bgName||"").toLowerCase();
-    // Use actual item names from dnd5e compendium
     const bgItems = {
-      "criminal":["Crowbar","Common Clothes"],
-      "entertainer":["Dagger","Common Clothes"],
-      "folk hero":["Artisan's Tools","Common Clothes"],
+      "acolyte":    ["Holy Symbol","Prayer Book","Common Clothes"],
+      "criminal":   ["Crowbar","Common Clothes","Thieves' Tools"],
+      "spy":        ["Crowbar","Common Clothes","Thieves' Tools"],
+      "entertainer":["Musical Instrument","Costume","Dagger"],
+      "folk hero":  ["Artisan's Tools","Shovel","Common Clothes"],
       "guild artisan":["Artisan's Tools","Traveler's Clothes"],
-      "hermit":["Herbalism Kit","Common Clothes"],
-      "noble":["Fine Clothes","Signet Ring"],
-      "outlander":["Quarterstaff","Hunting Trap","Traveler's Clothes"],
-      "sage":["Common Clothes"],
-      "sailor":["Belaying Pin","Silk Rope","Common Clothes"],
-      "soldier":["Common Clothes"],
-      "urchin":["Dagger","Common Clothes"],
-      "acolyte":["Common Clothes"],
-      "charlatan":["Fine Clothes","Disguise Kit"],
-      "desperado":["Dagger","Rope"],
+      "guild merchant":["Artisan's Tools","Traveler's Clothes"],
+      "hermit":     ["Herbalism Kit","Scroll Case","Common Clothes","Blanket"],
+      "noble":      ["Fine Clothes","Signet Ring","Scroll of Pedigree"],
+      "outlander":  ["Quarterstaff","Hunting Trap","Traveler's Clothes"],
+      "sage":       ["Ink Pen","Journal","Common Clothes"],
+      "sailor":     ["Belaying Pin","Silk Rope","Common Clothes"],
+      "pirate":     ["Belaying Pin","Silk Rope","Common Clothes"],
+      "soldier":    ["Common Clothes","Trophy"],
+      "urchin":     ["Dagger","Common Clothes","Map"],
+      "charlatan":  ["Fine Clothes","Disguise Kit"],
+      "investigator":["Magnifying Glass","Common Clothes"],
+      "desperado":  ["Dagger","Rope","Dark Cloak"],
+      "guide":      ["Cartographer's Tools","Traveler's Clothes","Map"],
+      "wayfarer":   ["Traveler's Clothes","Map"],
+      "farmer":     ["Common Clothes","Shovel"],
+      "scribe":     ["Ink Pen","Journal","Common Clothes"],
+      "artisan":    ["Artisan's Tools","Common Clothes"],
     };
     for(const [key,items] of Object.entries(bgItems)) {
-      if(bg.includes(key)||key.includes(bg.split(" ")[0])) return items;
+      if(bg.includes(key)||key.split(" ").some(k=>bg.includes(k))) return items;
     }
-    return ["Common Clothes"];
+    return ["Common Clothes","Belt Pouch"];
   }
 
   _getDefaultItems(classKey, wealth) {
