@@ -290,27 +290,48 @@ const NfSync = {
       return matches/q.length > (1-threshold);
     });
   },
+  // Item types that are valid for NPC equipment (not species features, class features etc.)
+  _validItemTypes: ["weapon","equipment","consumable","tool","loot","container","backpack"],
   async findItemInFoundry(name, packId, threshold=0.4) {
+    const isValidItem = (doc) => {
+      if(!doc) return false;
+      // Skip species/race/class/feat type items
+      if(["species","race","class","subclass","feat","background"].includes(doc.type)) return false;
+      return true;
+    };
     // Search in specific pack first
     if(packId) {
       try {
         const pack = game.packs.get(packId);
         if(pack) {
-          const idx = await pack.getIndex();
-          const found = this.fuzzyFind(name, idx.contents, "name", threshold);
-          if(found.length>0) return pack.getDocument(found[0]._id);
+          const idx = await pack.getIndex({fields:["name","type"]});
+          const validIdx = idx.contents.filter(e=>this._validItemTypes.includes(e.type));
+          const found = this.fuzzyFind(name, validIdx, "name", threshold);
+          if(found.length>0) {
+            const doc = await pack.getDocument(found[0]._id);
+            if(isValidItem(doc)) return doc;
+          }
         }
       } catch(e){}
     }
-    // Search in game.items
-    const worldItem = this.fuzzyFind(name, game.items.contents, "name", threshold);
-    if(worldItem.length>0) return worldItem[0];
-    // Search all packs
+    // Search in game.items - only valid types
+    const worldItems = game.items.contents.filter(i=>this._validItemTypes.includes(i.type));
+    const worldFound = this.fuzzyFind(name, worldItems, "name", threshold);
+    if(worldFound.length>0) return worldFound[0];
+    // Search all packs - skip species/race/class/feat packs
+    const skipPackIds = ["races","species","classes","subclasses","classfeatures","racefeatures","speciesfeatures","monsterfeatures","feats","backgrounds"];
     for(const pack of game.packs) {
+      const pid = pack.collection.toLowerCase();
+      if(skipPackIds.some(s=>pid.includes(s))) continue;
       try {
-        const idx = await pack.getIndex();
-        const found = this.fuzzyFind(name, idx.contents, "name", threshold);
-        if(found.length>0) return pack.getDocument(found[0]._id);
+        const idx = await pack.getIndex({fields:["name","type"]});
+        const validIdx = idx.contents.filter(e=>this._validItemTypes.includes(e.type));
+        if(validIdx.length===0) continue;
+        const found = this.fuzzyFind(name, validIdx, "name", threshold);
+        if(found.length>0) {
+          const doc = await pack.getDocument(found[0]._id);
+          if(isValidItem(doc)) return doc;
+        }
       } catch(e){}
     }
     return null;
@@ -398,6 +419,15 @@ class NpcForgePanel extends Application {
       {v:"le",l:t("alignLE")},{v:"ne",l:t("alignNE")},{v:"ce",l:t("alignCE")}
     ];
     const alignOptions = alignments.map(a=>`<option value="${a.v}" ${this._npcParams.alignment===a.v?"selected":""}>${a.l}</option>`).join("");
+
+    // Background dropdown - from DB + Foundry + default Artisan
+    const bgOptionsList = [`<option value="">-- Auto (Artisan) --</option>`];
+    const seenBgs = new Set();
+    // Custom DB first
+    bgsDb.forEach(b=>{ if(b.name&&!seenBgs.has(b.name.toLowerCase())){ seenBgs.add(b.name.toLowerCase()); bgOptionsList.push(`<option value="${b.name}" ${this._npcParams.background===b.name?"selected":""}>${b.name} (Custom)</option>`); } });
+    // From allBackgrounds (Foundry + packs)
+    this._allBackgrounds.forEach(b=>{ if(!seenBgs.has(b.name.toLowerCase())){ seenBgs.add(b.name.toLowerCase()); bgOptionsList.push(`<option value="${b.name}" ${this._npcParams.background===b.name?"selected":""}>${b.name}</option>`); } });
+    const bgOptions = bgOptionsList.join("");
 
     // Pack options for settings
     const packOptions = (sel) => [`<option value="">-- Auto --</option>`,
@@ -524,9 +554,15 @@ class NpcForgePanel extends Application {
     </div>
   </div>
 
-  <div class="nf-field">
-    <label>${t("labelAlignment")}</label>
-    <select id="nf-alignment">${alignOptions}</select>
+  <div class="nf-row">
+    <div class="nf-field">
+      <label>${t("labelAlignment")}</label>
+      <select id="nf-alignment">${alignOptions}</select>
+    </div>
+    <div class="nf-field">
+      <label>Background <span style="opacity:.5;font-weight:normal">(opt.)</span></label>
+      <select id="nf-background">${bgOptions}</select>
+    </div>
   </div>
 
   <div class="nf-field">
@@ -653,10 +689,11 @@ class NpcForgePanel extends Application {
       this._npcParams[group] = e.currentTarget.dataset.value;
     }));
 
-    // CR / Class / Alignment
+    // CR / Class / Alignment / Background
     root.querySelector("#nf-class")?.addEventListener("change",e=>this._npcParams.className=e.target.value);
     root.querySelector("#nf-cr")?.addEventListener("change",e=>this._npcParams.cr=parseFloat(e.target.value)||0);
     root.querySelector("#nf-alignment")?.addEventListener("change",e=>this._npcParams.alignment=e.target.value);
+    root.querySelector("#nf-background")?.addEventListener("change",e=>this._npcParams.background=e.target.value);
 
     // Race Excel filter
     const trigger = root.querySelector("#nf-race-trigger");
@@ -966,21 +1003,43 @@ Return this JSON structure exactly:
       const itemsToLoad = npcData.equipment?.length>0 ? npcData.equipment : this._getDefaultItems(classKey,wealth);
       const spellsToLoad = spellcasting&&npcData.spells?.length>0 ? npcData.spells : (spellcasting?this._getDefaultSpells(classKey,cr):[]);
 
+      // Load items - use toObject() to get plain data, prevents Plutonium popup
       const loadedItems = [];
       for(const itemName of itemsToLoad.slice(0,6)) {
         try {
           const item = await NfSync.findItemInFoundry(itemName, itemsCompId, fuzzy);
-          if(item) { loadedItems.push(item.toObject()); console.log("NPC Forge | loaded item:", itemName); }
-          else console.warn("NPC Forge | item not found in any pack:", itemName);
+          if(item) {
+            const data = item.toObject();
+            delete data._id; // remove ID so Foundry creates a new embedded copy
+            loadedItems.push(data);
+            console.log("NPC Forge | loaded item:", itemName);
+          } else console.warn("NPC Forge | item not found:", itemName);
         } catch(e){ console.warn("NPC Forge | item error:",itemName, e.message); }
       }
       const loadedSpells = [];
       for(const spellName of spellsToLoad.slice(0,8)) {
         try {
           const spell = await NfSync.findItemInFoundry(spellName, spellsCompId, fuzzy);
-          if(spell) { loadedSpells.push(spell.toObject()); console.log("NPC Forge | loaded spell:", spellName); }
-          else console.warn("NPC Forge | spell not found in any pack:", spellName);
+          if(spell) {
+            const data = spell.toObject();
+            delete data._id;
+            loadedSpells.push(data);
+            console.log("NPC Forge | loaded spell:", spellName);
+          } else console.warn("NPC Forge | spell not found:", spellName);
         } catch(e){ console.warn("NPC Forge | spell error:",spellName, e.message); }
+      }
+      // Load background equipment
+      const selectedBg = this._npcParams.background || "Artisan";
+      const bgEquipment = this._getBackgroundItems(selectedBg);
+      for(const itemName of bgEquipment) {
+        try {
+          const item = await NfSync.findItemInFoundry(itemName, itemsCompId, fuzzy);
+          if(item) {
+            const data = item.toObject();
+            delete data._id;
+            if(!loadedItems.find(i=>i.name===data.name)) loadedItems.push(data);
+          }
+        } catch(e){}
       }
 
       this._setStatus(root,t("step3"),"running","nf-create-status");
@@ -995,13 +1054,14 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
       // Alignment string
       const alignStr = npcData.alignment||"";
 
-      // Currency based on wealth
+      // Currency - realistic split across CP/SP/GP, no EP, rare PP
+      const r = () => Math.floor(Math.random()*10);
       const currencyMap = {
-        poor:{cp:Math.floor(Math.random()*20),sp:Math.floor(Math.random()*5),gp:0,ep:0,pp:0},
-        modest:{cp:0,sp:Math.floor(Math.random()*20)+5,gp:Math.floor(Math.random()*3),ep:0,pp:0},
-        normal:{cp:0,sp:Math.floor(Math.random()*10),gp:Math.floor(Math.random()*10)+2,ep:0,pp:0},
-        wealthy:{cp:0,sp:0,gp:Math.floor(Math.random()*50)+20,ep:Math.floor(Math.random()*5),pp:0},
-        noble:{cp:0,sp:0,gp:Math.floor(Math.random()*200)+100,ep:0,pp:Math.floor(Math.random()*10)+2}
+        poor:   {cp:r()*3+2,    sp:r(),        gp:0,              ep:0, pp:0},
+        modest: {cp:r()*2,      sp:r()*3+5,    gp:r()%3,          ep:0, pp:0},
+        normal: {cp:r(),        sp:r()*2+3,    gp:r()+2,          ep:0, pp:0},
+        wealthy:{cp:0,          sp:r()*5,      gp:r()*5+20,       ep:0, pp:0},
+        noble:  {cp:0,          sp:r()*3,      gp:r()*20+80,      ep:0, pp:r()%3}
       };
       const currency = currencyMap[wealth]||currencyMap.normal;
 
@@ -1056,6 +1116,33 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
       if(btn) btn.disabled=false;
     }
   }
+
+  _getBackgroundItems(bgName) {
+    const bg = bgName.toLowerCase();
+    const bgItems = {
+      "artisan":["Artisan's Tools","Common Clothes","Belt Pouch"],
+      "criminal":["Crowbar","Common Clothes","Belt Pouch"],
+      "entertainer":["Lute","Costume","Belt Pouch"],
+      "folk hero":["Artisan's Tools","Shovel","Iron Pot","Common Clothes"],
+      "guild artisan":["Artisan's Tools","Letter of Introduction","Traveler's Clothes"],
+      "hermit":["Herbalism Kit","Scroll Case","Common Clothes"],
+      "noble":["Fine Clothes","Signet Ring","Scroll of Pedigree"],
+      "outlander":["Staff","Hunting Trap","Traveler's Clothes"],
+      "sage":["Ink","Quill","Small Knife","Letter","Common Clothes"],
+      "sailor":["Belaying Pin","Silk Rope","Common Clothes"],
+      "soldier":["Insignia of Rank","Trophy","Deck of Cards","Common Clothes"],
+      "urchin":["Small Knife","Map","Pet Mouse","Common Clothes"],
+      "acolyte":["Holy Symbol","Prayer Book","Common Clothes"],
+      "charlatan":["Fine Clothes","Disguise Kit","Con Tools"],
+      "investigator":["Magnifying Glass","Common Clothes","Belt Pouch"],
+      "desperado":["Knife","Rope","Dark Cloak","Loaded Dice"],
+    };
+    // fuzzy match background name
+    for(const [key,items] of Object.entries(bgItems)) {
+      if(bg.includes(key)||key.includes(bg.split(" ")[0])) return items;
+    }
+    return ["Common Clothes","Belt Pouch"]; // default
+  },
 
   _getDefaultItems(classKey, wealth) {
     const byClass = {
