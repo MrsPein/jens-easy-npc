@@ -550,7 +550,7 @@ Make portraitPrompt very detailed with exact appearance, clothing matching wealt
         if (imageKey) {
           let imageDataUrl;
           // Always use Gemini Flash Image (free tier, 500/day)
-          const ir = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${imageKey}`, {
+          const ir = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${imageKey}`, {
             method:"POST", headers:{"Content-Type":"application/json"},
             body: JSON.stringify({
               contents:[{parts:[{text: npcData.portraitPrompt + ", fantasy portrait style, highly detailed, painterly illustration"}]}],
