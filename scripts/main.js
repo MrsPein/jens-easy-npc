@@ -306,9 +306,14 @@ const NfSync = {
       try {
         const idx = await pack.getIndex({fields:["name","type"]});
         const valid = idx.contents.filter(e=>validTypes.includes(e.type));
-        const found = this.fuzzyFind(name, valid, "name", threshold);
+        // Try exact match first (case insensitive)
+        const nameLower = name.toLowerCase();
+        let exactMatch = valid.find(e=>e.name.toLowerCase()===nameLower);
+        // Try starts-with match
+        if(!exactMatch) exactMatch = valid.find(e=>e.name.toLowerCase().startsWith(nameLower));
+        // Fuzzy as last resort with tighter threshold
+        const found = exactMatch ? [exactMatch] : this.fuzzyFind(name, valid, "name", Math.min(threshold, 0.25));
         if(found.length===0) return null;
-        // Get raw data without triggering Plutonium - use pack source directly
         const source = await pack.getDocument(found[0]._id);
         if(!source) return null;
         const raw = source.toObject();
@@ -348,7 +353,10 @@ const NfSync = {
       try {
         const idx = await pack.getIndex({fields:["name","type"]});
         const valid = idx.contents.filter(e=>e.type==="spell");
-        const found = this.fuzzyFind(name, valid, "name", threshold);
+        const nameLower = name.toLowerCase();
+        let exactMatch = valid.find(e=>e.name.toLowerCase()===nameLower);
+        if(!exactMatch) exactMatch = valid.find(e=>e.name.toLowerCase().startsWith(nameLower));
+        const found = exactMatch ? [exactMatch] : this.fuzzyFind(name, valid, "name", Math.min(threshold, 0.25));
         if(found.length===0) return null;
         const source = await pack.getDocument(found[0]._id);
         if(!source) return null;
@@ -1015,7 +1023,7 @@ Return this JSON structure exactly:
       this._setStatus(root,t("step2"),"running","nf-create-status");
       const baseAbilities = {str:npcData.stats?.STR||10,dex:npcData.stats?.DEX||10,con:npcData.stats?.CON||10,int:npcData.stats?.INT||10,wis:npcData.stats?.WIS||10,cha:npcData.stats?.CHA||10};
       const scaledAbilities = NF_CR.scaleAbilities(baseAbilities, cr, saves);
-      const hp = NF_CR.getAvgHP(cr);
+      const hp = Math.max(1, NF_CR.getAvgHP(cr));
       const ac = NF_CR.getAC(cr);
       const profBonus = NF_CR.getProfBonus(cr);
 
@@ -1030,10 +1038,10 @@ Return this JSON structure exactly:
       const raceSize = raceProfile?.traits?.size||"med";
       const raceSpeed = raceProfile?.traits?.speed?.walk||30;
       const raceDarkvision = raceProfile?.traits?.darkvision||0;
-      const raceLanguages = raceProfile?.traits?.languages||["common"];
-
-      // Languages: merge race + generated
-      const allLangs = [...new Set([...raceLanguages,...(npcData.stats?.languages||[])])];
+      // Languages - ensure array of strings, lowercase
+      const raceLanguages = (raceProfile?.traits?.languages||["common"]).map(l=>String(l).toLowerCase());
+      const npcLangs = (npcData.stats?.languages||[]).map(l=>String(l).toLowerCase());
+      const allLangs = [...new Set([...raceLanguages,...npcLangs])].filter(Boolean);
 
       // Load items + spells
       const itemsCompId = game.settings.get("npc-forge","itemsComp")||"";
@@ -1141,14 +1149,28 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
         }
       });
 
-      // Add items + spells - keepId:false prevents Plutonium from treating these as imports
+      // Add items + spells
+      // We use a Plutonium-bypass: temporarily suppress their hook by flagging our operation
       const allItems = [...loadedItems,...loadedSpells];
       if(allItems.length>0) {
-        await actor.createEmbeddedDocuments("Item", allItems, {
-          keepId: false,
-          render: false,
-          keepEmbeddedIds: false
-        });
+        // Set a flag that Plutonium checks - "No, use normal drag-drop" path
+        const origPrompt = game.settings.storage.get("world")?.get("plutonium.config.importViaImporterDefault");
+        try {
+          // Use Item.create directly on actor without going through Plutonium
+          await Item.createDocuments(allItems.map(i=>({...i, parent: undefined})), {
+            parent: actor,
+            keepId: false,
+            render: false,
+            "plutonium-no-prompt": true
+          });
+        } catch(e) {
+          // Fallback: try createEmbeddedDocuments
+          try {
+            await actor.createEmbeddedDocuments("Item", allItems, {keepId:false, render:false});
+          } catch(e2) {
+            console.warn("NPC Forge | item creation failed:", e2.message);
+          }
+        }
       }
 
       actor.sheet.render(true);
@@ -1162,54 +1184,53 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
   }
 
   _getBackgroundItems(bgName) {
-    const bg = bgName.toLowerCase();
+    const bg = (bgName||"").toLowerCase();
+    // Use actual item names from dnd5e compendium
     const bgItems = {
-      "artisan":["Artisan's Tools","Common Clothes","Belt Pouch"],
-      "criminal":["Crowbar","Common Clothes","Belt Pouch"],
-      "entertainer":["Lute","Costume","Belt Pouch"],
-      "folk hero":["Artisan's Tools","Shovel","Iron Pot","Common Clothes"],
-      "guild artisan":["Artisan's Tools","Letter of Introduction","Traveler's Clothes"],
-      "hermit":["Herbalism Kit","Scroll Case","Common Clothes"],
-      "noble":["Fine Clothes","Signet Ring","Scroll of Pedigree"],
-      "outlander":["Staff","Hunting Trap","Traveler's Clothes"],
-      "sage":["Ink","Quill","Small Knife","Letter","Common Clothes"],
+      "criminal":["Crowbar","Common Clothes"],
+      "entertainer":["Dagger","Common Clothes"],
+      "folk hero":["Artisan's Tools","Common Clothes"],
+      "guild artisan":["Artisan's Tools","Traveler's Clothes"],
+      "hermit":["Herbalism Kit","Common Clothes"],
+      "noble":["Fine Clothes","Signet Ring"],
+      "outlander":["Quarterstaff","Hunting Trap","Traveler's Clothes"],
+      "sage":["Common Clothes"],
       "sailor":["Belaying Pin","Silk Rope","Common Clothes"],
-      "soldier":["Insignia of Rank","Trophy","Deck of Cards","Common Clothes"],
-      "urchin":["Small Knife","Map","Pet Mouse","Common Clothes"],
-      "acolyte":["Holy Symbol","Prayer Book","Common Clothes"],
-      "charlatan":["Fine Clothes","Disguise Kit","Con Tools"],
-      "investigator":["Magnifying Glass","Common Clothes","Belt Pouch"],
-      "desperado":["Knife","Rope","Dark Cloak","Loaded Dice"],
+      "soldier":["Common Clothes"],
+      "urchin":["Dagger","Common Clothes"],
+      "acolyte":["Common Clothes"],
+      "charlatan":["Fine Clothes","Disguise Kit"],
+      "desperado":["Dagger","Rope"],
     };
-    // fuzzy match background name
     for(const [key,items] of Object.entries(bgItems)) {
       if(bg.includes(key)||key.includes(bg.split(" ")[0])) return items;
     }
-    return ["Common Clothes","Belt Pouch"]; // default
+    return ["Common Clothes"];
   }
 
   _getDefaultItems(classKey, wealth) {
+    // Item names matched to actual dnd5e compendium entries
     const byClass = {
-      barbarian:["Greataxe","Handaxe","Handaxe","Leather Armor","Explorer's Pack"],
-      bard:["Rapier","Lute","Leather Armor","Dagger","Entertainer's Pack"],
-      cleric:["Mace","Shield","Chain Mail","Holy Symbol","Priest's Pack"],
-      druid:["Quarterstaff","Leather Armor","Druidic Focus","Explorer's Pack","Herbalism Kit"],
-      fighter:["Longsword","Shield","Chain Mail","Light Crossbow","Bolt","Dungeoneer's Pack"],
-      monk:["Shortsword","Dart","Explorer's Pack"],
-      paladin:["Longsword","Shield","Chain Mail","Holy Symbol","Priest's Pack"],
-      ranger:["Longbow","Arrow","Shortsword","Leather Armor","Explorer's Pack"],
-      rogue:["Rapier","Shortbow","Arrow","Leather Armor","Thieves' Tools","Burglar's Pack","Dagger"],
-      sorcerer:["Dagger","Component Pouch","Dungeoneer's Pack"],
-      warlock:["Light Crossbow","Bolt","Leather Armor","Component Pouch","Scholar's Pack"],
-      wizard:["Quarterstaff","Spellbook","Component Pouch","Scholar's Pack","Dagger"],
-      commoner:["Dagger","Common Clothes","Belt Pouch","Torch"]
+      barbarian:["Greataxe","Handaxe","Leather Armor"],
+      bard:["Rapier","Dagger","Leather Armor"],
+      cleric:["Mace","Chain Mail"],
+      druid:["Quarterstaff","Leather Armor","Herbalism Kit"],
+      fighter:["Longsword","Chain Mail","Light Crossbow"],
+      monk:["Shortsword","Dart"],
+      paladin:["Longsword","Chain Mail"],
+      ranger:["Longbow","Shortsword","Leather Armor"],
+      rogue:["Rapier","Shortbow","Leather Armor","Thieves' Tools","Dagger"],
+      sorcerer:["Dagger","Component Pouch"],
+      warlock:["Light Crossbow","Leather Armor","Component Pouch"],
+      wizard:["Quarterstaff","Component Pouch","Dagger"],
+      commoner:["Dagger","Torch"]
     };
     const wealthItems={
-      noble:["Fine Clothes","Signet Ring","Purse"],
-      wealthy:["Traveler's Clothes","Belt Pouch"],
-      poor:["Traveler's Clothes"],
+      noble:["Fine Clothes","Signet Ring"],
+      wealthy:["Traveler's Clothes"],
+      poor:[],
       modest:["Common Clothes"],
-      normal:[]
+      normal:["Common Clothes"]
     };
     return [...(byClass[classKey]||byClass.commoner),...(wealthItems[wealth]||[])];
   }
