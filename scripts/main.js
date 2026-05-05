@@ -969,7 +969,12 @@ class NpcForgePanel extends Application {
       const classKey = NF_CR.skillsForClass[className?.toLowerCase()] ? className.toLowerCase() : "commoner";
       const saves = NF_CR.savesForClass[classKey]||[];
       const skillPool = NF_CR.skillsForClass[classKey]||NF_CR.skillsForClass.commoner;
-      const spellcasting = NF_CR.spellcastingForClass[classKey]||null;
+      let spellcasting = NF_CR.spellcastingForClass[classKey]||null;
+      // Some backgrounds grant cantrips/spells
+      const bgName2 = (this._npcParams.background||"").toLowerCase();
+      if(!spellcasting && (bgName2.includes("acolyte")||bgName2.includes("hermit")||bgName2.includes("sage"))) {
+        spellcasting = "wis";
+      }
 
       // Name seeds
       const seeds=["Vorlan","Thisbe","Kreth","Umara","Belwick","Saoirse","Dravix","Fennick","Zorath","Lirien","Casmyr","Ondra","Brix","Tessavel","Gorruk","Maeven","Ydrel","Skarix","Nunna","Pholt"];
@@ -995,6 +1000,8 @@ Alignment: ${alignment?alignMap[alignment]||alignment:(lang==="de"?"zufällig":"
 ${wish?`Special personal wishes (integrate into backstory, appearance, occupation): ${wish}`:""}
 
 ${customName?`NAME: Use exactly this name: "${customName}"`:`NAME RULES: Create a unique name with first AND last name. Style: ${nameStyle}. Sound inspiration (do NOT copy): "${nameSeed}". FORBIDDEN: Aldric, Mira, Gareth, Elena, Theron, Sera, Lyra, Vane, Aria, Kael, Zara, Drake, Storm, Silver. ${lang==="de"?"German-style phonetics welcome (Schimmer, Fluss, Glut etc.)":""}`}
+
+CRITICAL: The "equipment" and "spells" arrays MUST contain ENGLISH item names only (e.g. "Rapier", "Dagger", "Fire Bolt") — these are looked up in an English database. All other text fields use ${outputLang}.
 
 Return this JSON structure exactly:
 {
@@ -1027,10 +1034,19 @@ Return this JSON structure exactly:
       const ac = NF_CR.getAC(cr);
       const profBonus = NF_CR.getProfBonus(cr);
 
-      // Skills from class
-      const numSkills = classKey==="rogue"?4:classKey==="bard"?3:2;
+      // Skills from class - pick appropriate number
+      const numSkills = classKey==="rogue"?4:classKey==="bard"?3:classKey==="ranger"?3:2;
+      // Also include skills from background
+      const bgSkillMap = {
+        "criminal":["ste","dec"], "entertainer":["acr","prf"], "folk hero":["ani","sur"],
+        "guild artisan":["ins","per"], "hermit":["med","rel"], "noble":["his","per"],
+        "outlander":["ath","sur"], "sage":["arc","his"], "sailor":["ath","prc"],
+        "soldier":["ath","itm"], "urchin":["slt","ste"], "acolyte":["ins","rel"],
+        "charlatan":["dec","slt"], "desperado":["ste","dec"], "investigator":["ins","inv"]
+      };
+      const bgSkills = Object.entries(bgSkillMap).find(([k])=>bgName2.includes(k))?.[1]||[];
       const shuffled = [...skillPool].sort(()=>Math.random()-0.5);
-      const chosenSkills = shuffled.slice(0,numSkills);
+      const chosenSkills = [...new Set([...bgSkills,...shuffled])].slice(0,numSkills+bgSkills.length);
       const skills = {};
       chosenSkills.forEach(s=>{ skills[s]={value:1}; });
 
@@ -1039,17 +1055,41 @@ Return this JSON structure exactly:
       const raceSpeed = raceProfile?.traits?.speed?.walk||30;
       const raceDarkvision = raceProfile?.traits?.darkvision||0;
       // Languages - ensure array of strings, lowercase
-      const raceLanguages = (raceProfile?.traits?.languages||["common"]).map(l=>String(l).toLowerCase());
-      const npcLangs = (npcData.stats?.languages||[]).map(l=>String(l).toLowerCase());
+      // Auto-detect race languages if not in profile
+      const autoRaceLangs = raceName ? (() => {
+        const n = raceName.toLowerCase();
+        if(n.includes("aasimar")) return ["common","celestial"];
+        if(n.includes("tiefling")) return ["common","infernal"];
+        if(n.includes("elf")||n.includes("eladrin")) return ["common","elvish"];
+        if(n.includes("dwarf")) return ["common","dwarvish"];
+        if(n.includes("gnome")) return ["common","gnomish"];
+        if(n.includes("halfling")) return ["common","halfling"];
+        if(n.includes("orc")||n.includes("half-orc")) return ["common","orc"];
+        if(n.includes("dragonborn")) return ["common","draconic"];
+        if(n.includes("pexian")) return ["common"];
+        return ["common"];
+      })() : ["common"];
+      const raceLanguages = (raceProfile?.traits?.languages?.length>0 ? raceProfile.traits.languages : autoRaceLangs).map(l=>String(l).toLowerCase());
+      const npcLangs = (npcData.stats?.languages||[]).map(l=>String(l).toLowerCase()).filter(l=>!l.includes(" "));
       const allLangs = [...new Set([...raceLanguages,...npcLangs])].filter(Boolean);
 
       // Load items + spells
       const itemsCompId = game.settings.get("npc-forge","itemsComp")||"";
       const spellsCompId = game.settings.get("npc-forge","spellsComp")||"";
 
-      // Determine items to search for
-      const itemsToLoad = npcData.equipment?.length>0 ? npcData.equipment : this._getDefaultItems(classKey,wealth);
-      const spellsToLoad = spellcasting&&npcData.spells?.length>0 ? npcData.spells : (spellcasting?this._getDefaultSpells(classKey,cr):[]);
+      // Determine items - validate they look like English names (not German descriptions)
+      const looksEnglish = (arr) => arr.length>0 && !arr.some(s=>
+        s.includes(":")||s.includes("Stufe")||s.includes("Zaubertrick")||
+        s.includes("Plätze")||s.includes("Magie")||s.includes("Schock")||
+        s.length>40
+      );
+      const rawEquip = npcData.equipment||[];
+      const rawSpells = npcData.spells||[];
+      const itemsToLoad = looksEnglish(rawEquip) ? rawEquip : this._getDefaultItems(classKey,wealth);
+      let spellsToLoad = (spellcasting && looksEnglish(rawSpells)) ? rawSpells : (spellcasting?this._getDefaultSpells(classKey,cr):[]);
+      // Background spells
+      if(spellsToLoad.length===0 && bgName2.includes("acolyte")) spellsToLoad=["Sacred Flame","Spare the Dying","Thaumaturgy"];
+      if(spellsToLoad.length===0 && bgName2.includes("hermit")) spellsToLoad=["Druidcraft","Guidance"];
 
       // Load items as raw data - bypasses Plutonium hooks completely
       const loadedItems = [];
@@ -1080,6 +1120,12 @@ Return this JSON structure exactly:
         } catch(e){}
       }
 
+      // Always add Unarmed Strike
+      try {
+        const unarmed = await NfSync.findRawItemData("Unarmed Strike", itemsCompId, fuzzy);
+        if(unarmed) addItem(unarmed);
+      } catch(e){}
+
       // Spells as raw data
       const loadedSpells = [];
       for(const spellName of spellsToLoad.slice(0,8)) {
@@ -1105,13 +1151,44 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
       // Currency - realistic split across CP/SP/GP, no EP, rare PP
       const r = () => Math.floor(Math.random()*10);
       const currencyMap = {
-        poor:   {cp:r()*3+2,    sp:r(),        gp:0,              ep:0, pp:0},
-        modest: {cp:r()*2,      sp:r()*3+5,    gp:r()%3,          ep:0, pp:0},
-        normal: {cp:r(),        sp:r()*2+3,    gp:r()+2,          ep:0, pp:0},
-        wealthy:{cp:0,          sp:r()*5,      gp:r()*5+20,       ep:0, pp:0},
-        noble:  {cp:0,          sp:r()*3,      gp:r()*20+80,      ep:0, pp:r()%3}
+        poor:   {cp:r()*3+2,  sp:r(),       gp:0,         ep:0, pp:0},
+        modest: {cp:r()*2,    sp:r()*3+5,   gp:r()%3,     ep:0, pp:0},
+        normal: {cp:r(),      sp:r()*2+3,   gp:r()+2,     ep:0, pp:0},
+        wealthy:{cp:0,        sp:r()*3+5,   gp:r()*5+20,  ep:0, pp:0},
+        noble:  {cp:0,        sp:r()*3,     gp:r()*20+80, ep:0, pp:r()%3}
       };
       const currency = currencyMap[wealth]||currencyMap.normal;
+
+      // Load race/species features from Foundry pack if available
+      const raceFeatureItems = [];
+      if(raceName) {
+        try {
+          // Find the species item in packs
+          for(const pack of game.packs) {
+            const pid = pack.collection.toLowerCase();
+            if(pid.includes("classfeature")||pid.includes("monsterfeature")||pid.includes("spell")||pid.includes("item")) continue;
+            const idx = await pack.getIndex({fields:["name","type"]});
+            const speciesEntry = idx.contents.find(e=>
+              (e.type==="species"||e.type==="race") &&
+              e.name.toLowerCase()===raceName.toLowerCase()
+            );
+            if(speciesEntry) {
+              const speciesDoc = await pack.getDocument(speciesEntry._id);
+              if(speciesDoc) {
+                // Get the embedded features/advancements as items
+                const raw = speciesDoc.toObject();
+                // Add the species item itself as a feature
+                const speciesRaw = {...raw};
+                delete speciesRaw._id;
+                delete speciesRaw.ownership;
+                raceFeatureItems.push(speciesRaw);
+                console.log("NPC Forge | loaded species:", raceName);
+              }
+              break;
+            }
+          }
+        } catch(e){ console.warn("NPC Forge | species feature load failed:", e.message); }
+      }
 
       const actor = await Actor.create({
         name: npcData.name, type:"npc", img:"icons/svg/mystery-man.svg",
@@ -1149,27 +1226,13 @@ ${npcData.personality?.length?`<p><b>${lang==="de"?"Persönlichkeit":"Personalit
         }
       });
 
-      // Add items + spells
-      // We use a Plutonium-bypass: temporarily suppress their hook by flagging our operation
-      const allItems = [...loadedItems,...loadedSpells];
+      // Add items + spells + race features
+      const allItems = [...loadedItems,...loadedSpells,...raceFeatureItems];
       if(allItems.length>0) {
-        // Set a flag that Plutonium checks - "No, use normal drag-drop" path
-        const origPrompt = game.settings.storage.get("world")?.get("plutonium.config.importViaImporterDefault");
         try {
-          // Use Item.create directly on actor without going through Plutonium
-          await Item.createDocuments(allItems.map(i=>({...i, parent: undefined})), {
-            parent: actor,
-            keepId: false,
-            render: false,
-            "plutonium-no-prompt": true
-          });
+          await actor.createEmbeddedDocuments("Item", allItems, {keepId:false, render:false});
         } catch(e) {
-          // Fallback: try createEmbeddedDocuments
-          try {
-            await actor.createEmbeddedDocuments("Item", allItems, {keepId:false, render:false});
-          } catch(e2) {
-            console.warn("NPC Forge | item creation failed:", e2.message);
-          }
+          console.warn("NPC Forge | item creation error:", e.message);
         }
       }
 
