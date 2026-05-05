@@ -202,19 +202,24 @@ const NfSync = {
       const db = JSON.parse(game.settings.get("npc-forge","raceDatabase"));
       db.forEach(r=>{ if(r.name) results.set(r.name.toLowerCase(),{name:r.name,source:"Custom",data:r}); });
     } catch(e){}
-    // From Foundry world items - only type="species"
+    // From Foundry world items - type="species" or "race"
     game.items.forEach(i=>{
-      if(i.type==="species" && this._isRealSpecies(i.name)) {
+      if((i.type==="species" || i.type==="race") && this._isRealSpecies(i.name)) {
         const k=i.name.toLowerCase();
         if(!results.has(k)) results.set(k,{name:i.name,source:"Foundry",data:null,item:i});
       }
     });
-    // From packs - STRICTLY only type="species"
+    // From packs - accept "species" and "race" types, skip feature packs
+    const skipPacks = ["racefeatures","speciesfeatures","classfeatures","monsterfeatures","subclasses","spells","items","tables","macros","monsters","auras","feats"];
     for(const pack of game.packs) {
+      const packLabel = pack.metadata.label.toLowerCase();
+      const packId = pack.collection.toLowerCase();
+      // Skip packs that clearly contain features not races
+      if(skipPacks.some(kw => packLabel.includes(kw) || packId.includes(kw))) continue;
       try {
         const idx = await pack.getIndex({fields:["name","type"]});
         for(const e of idx) {
-          if(e.type !== "species") continue;
+          if(e.type !== "species" && e.type !== "race") continue;
           const k=e.name.toLowerCase();
           if(!results.has(k) && this._isRealSpecies(e.name)) {
             results.set(k,{name:e.name,source:pack.metadata.label,data:null,packId:pack.collection,docId:e._id});
