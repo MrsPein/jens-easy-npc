@@ -1,6 +1,5 @@
 // NPC Forge - main entry point
 
-// Wait for Foundry to be ready
 Hooks.once("ready", () => {
   console.log("NPC Forge | Ready - injecting button...");
   setTimeout(() => NpcForge._injectButton(), 1500);
@@ -10,80 +9,116 @@ Hooks.on("renderSceneControls", () => {
   setTimeout(() => NpcForge._injectButton(), 300);
 });
 
-// Global NpcForge object
 window.NpcForge = {
   _panel: null,
-
   open() {
-    if (!this._panel) {
-      this._panel = new NpcForgePanel();
-    }
-    if (this._panel.rendered) {
-      this._panel.close();
-    } else {
-      this._panel.render(true);
-    }
+    if (!this._panel) this._panel = new NpcForgePanel();
+    if (this._panel.rendered) this._panel.close();
+    else this._panel.render(true);
   },
-
   _injectButton() {
     if (document.querySelector("[data-npcforge-btn]")) return;
-
-    const menu = document.querySelector("#scene-controls menu") ||
-                 document.querySelector("#sidebar-tabs menu");
-    if (!menu) {
-      console.warn("NPC Forge | Could not find menu, retrying...");
-      setTimeout(() => NpcForge._injectButton(), 1000);
-      return;
-    }
-
+    const menu = document.querySelector("#scene-controls menu") || document.querySelector("#sidebar-tabs menu");
+    if (!menu) { setTimeout(() => NpcForge._injectButton(), 1000); return; }
     const li = document.createElement("li");
     const btn = document.createElement("button");
     btn.setAttribute("data-npcforge-btn", "1");
     btn.type = "button";
     btn.className = "control ui-control layer icon fa-solid fa-user-plus";
     btn.title = "NPC Forge – Jen's easy NPC";
-    btn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      NpcForge.open();
-    });
+    btn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); NpcForge.open(); });
     li.appendChild(btn);
     menu.appendChild(li);
     console.log("NPC Forge | Button injected!");
   }
 };
 
-// ── Settings ─────────────────────────────────────────────────────────────
+// ── i18n helper ──────────────────────────────────────────────────────────────
+const NF_I18N = {
+  de: {
+    tabCreate: "Erstellen", tabRaces: "Rassen", tabClasses: "Klassen", tabSettings: "Einstellungen",
+    labelRace: "Rasse", labelBackground: "Hintergrund", labelGender: "Geschlecht",
+    labelAge: "Alter", labelWealth: "Wohlstand", labelWish: "Besonderer Wunsch",
+    wishPlaceholder: "z.B. ist Apothekerin, hat blaue Haare, trägt goldene Ohrringe, hat eine große Narbe über dem Auge...",
+    gRandom: "Zufällig", gMale: "Männlich", gFemale: "Weiblich", gNonBinary: "Divers",
+    aYoung: "Jung", aNormal: "Normal", aOld: "Alt",
+    wPoor: "Arm", wModest: "Bescheiden", wNormal: "Normal", wWealthy: "Wohlhabend", wNoble: "Adelig",
+    btnGenerate: "NPC Generieren",
+    labelAnthropicKey: "Anthropic / OpenRouter API-Schlüssel",
+    labelSaveSettings: "Einstellungen speichern",
+    settingsSaved: "Einstellungen gespeichert!",
+    step1: "Schritt 1/2: NPC wird generiert...",
+    step2: "Schritt 2/2: Erstelle Charakter...",
+    done: (name) => `✓ "${name}" erstellt!`,
+    searchRace: "Rasse suchen...", searchBg: "Hintergrund suchen...",
+    noRaces: "Keine Rassen gefunden", noResults: "Keine Ergebnisse",
+    pasteRace: "Oder Text / Beschreibung einfügen",
+    importFromText: "Aus Text importieren", importClass: "Klasse importieren",
+    pasteClass: "Klassenbeschreibung einfügen",
+    savedRaces: (n) => `Gespeicherte Rassen (${n})`,
+    noRacesYet: "Noch keine Rassen. Oben Text importieren.",
+    optional: "optional",
+    outputLang: "Deutsch",
+  },
+  en: {
+    tabCreate: "Create", tabRaces: "Races", tabClasses: "Classes", tabSettings: "Settings",
+    labelRace: "Race", labelBackground: "Background", labelGender: "Gender",
+    labelAge: "Age", labelWealth: "Wealth", labelWish: "Special Personal Wish",
+    wishPlaceholder: "e.g. is an apothecary, has blue hair, wears golden earrings, has a big scar over one eye, missing an ear...",
+    gRandom: "Random", gMale: "Male", gFemale: "Female", gNonBinary: "Non-binary",
+    aYoung: "Young", aNormal: "Normal", aOld: "Old",
+    wPoor: "Poor", wModest: "Modest", wNormal: "Normal", wWealthy: "Wealthy", wNoble: "Noble",
+    btnGenerate: "Generate NPC",
+    labelAnthropicKey: "Anthropic / OpenRouter API Key",
+    labelSaveSettings: "Save Settings",
+    settingsSaved: "Settings saved!",
+    step1: "Step 1/2: Generating NPC...",
+    step2: "Step 2/2: Creating actor...",
+    done: (name) => `✓ "${name}" created!`,
+    searchRace: "Search races...", searchBg: "Search backgrounds...",
+    noRaces: "No races found", noResults: "No results",
+    pasteRace: "Or paste text / description",
+    importFromText: "Import from text", importClass: "Import class",
+    pasteClass: "Paste class or subclass...",
+    savedRaces: (n) => `Saved races (${n})`,
+    noRacesYet: "No races yet. Import from text above.",
+    optional: "optional",
+    outputLang: "English",
+  }
+};
 
+function getNFLang() {
+  try {
+    const lang = game.settings.get("core", "language") || "en";
+    return lang.startsWith("de") ? "de" : "en";
+  } catch(e) { return "en"; }
+}
+
+function t(key, ...args) {
+  const lang = getNFLang();
+  const dict = NF_I18N[lang] || NF_I18N.en;
+  const val = dict[key] || NF_I18N.en[key] || key;
+  return typeof val === "function" ? val(...args) : val;
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
 Hooks.once("init", () => {
   console.log("NPC Forge | Initialising...");
-
   game.settings.register("npc-forge", "anthropicKey", {
     name: "Anthropic / OpenRouter API Key", scope: "world", config: true, type: String, default: ""
   });
-  game.settings.register("npc-forge", "imageProvider", {
-    name: "Image Generator", scope: "world", config: false, type: String, default: "gemini"
-  });
-  game.settings.register("npc-forge", "imageApiKey", {
-    name: "Image API Key", scope: "world", config: true, type: String, default: ""
-  });
   game.settings.register("npc-forge", "raceDatabase", { scope: "world", config: false, type: String, default: "[]" });
   game.settings.register("npc-forge", "classDatabase", { scope: "world", config: false, type: String, default: "[]" });
-
   Handlebars.registerHelper("eq", (a, b) => a === b);
 });
 
-// ── Panel Application ─────────────────────────────────────────────────────
-
+// ── Panel ─────────────────────────────────────────────────────────────────────
 class NpcForgePanel extends Application {
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
-      id: "npc-forge-sidebar",
-      title: "Jen's easy NPC",
+      id: "npc-forge-sidebar", title: "Jen's easy NPC",
       template: "modules/npc-forge/templates/sidebar.html",
-      width: 380,
-      height: 740,
-      resizable: true
+      width: 380, height: 720, resizable: true
     });
   }
 
@@ -91,10 +126,10 @@ class NpcForgePanel extends Application {
   _npcParams = {};
   _searchTimers = {};
 
-  // Build HTML directly to avoid template caching issues on The Forge
   async _renderInner(data) {
     let races = [];
     try { races = JSON.parse(game.settings.get("npc-forge","raceDatabase")); } catch(e) {}
+
     const raceList = races.length
       ? races.map(r => `<div class="npcforge-entry" data-id="${r.id}">
           <div class="npcforge-entry-header">
@@ -102,9 +137,9 @@ class NpcForgePanel extends Application {
             <span class="npcforge-entry-source ${r.isHomebrew?'homebrew':''}">${r.source||""}</span>
             <button class="npcforge-entry-delete" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#999;font-size:12px">✕</button>
           </div>
-          <div class="npcforge-entry-traits" style="font-size:10px;color:#888;margin-top:2px">${r.traits?.size||""} · ${r.traits?.speed?.walk||30}ft · ${r.traits?.alignment||""}</div>
+          <div style="font-size:10px;color:#888;margin-top:2px">${r.traits?.size||""} · ${r.traits?.speed?.walk||30}ft · ${r.traits?.alignment||""}</div>
         </div>`).join("")
-      : `<div style="text-align:center;color:#888;font-size:11px;padding:12px 0">No races yet. Import from text above.</div>`;
+      : `<div style="text-align:center;color:#888;font-size:11px;padding:12px 0">${t("noRacesYet")}</div>`;
 
     const html = `<div id="npc-forge-inner">
 <style>
@@ -117,7 +152,7 @@ class NpcForgePanel extends Application {
 .nf-field { display:flex; flex-direction:column; gap:3px; }
 .nf-field label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; color:#888; }
 .nf-field input, .nf-field textarea, .nf-field select { font-size:12px; padding:4px 6px; border:1px solid #ccc; border-radius:4px; width:100%; box-sizing:border-box; }
-.nf-field textarea { resize:vertical; min-height:48px; font-family:inherit; }
+.nf-field textarea { resize:vertical; min-height:60px; font-family:inherit; }
 .nf-chips { display:flex; gap:4px; flex-wrap:wrap; }
 .nf-chip { padding:3px 8px; font-size:11px; border-radius:3px; border:1px solid #ccc; background:#f5f5f5; cursor:pointer; color:#666; }
 .nf-chip.selected { background:#6b5acd; border-color:transparent; color:#fff; }
@@ -130,11 +165,6 @@ class NpcForgePanel extends Application {
 .nf-status.error { color:#e05252; background:rgba(224,82,82,0.1); display:block; }
 .nf-dropzone { border:2px dashed #ccc; border-radius:6px; padding:14px 8px; text-align:center; cursor:pointer; color:#888; font-size:11px; }
 .nf-dropzone:hover { border-color:#6b5acd; background:#f9f7ff; }
-.nf-entry { background:#f9f9f9; border:1px solid #e0e0e0; border-radius:4px; padding:6px 8px; cursor:pointer; margin-bottom:4px; }
-.nf-entry-header { display:flex; align-items:center; gap:6px; }
-.nf-entry-name { font-size:12px; font-weight:600; }
-.nf-entry-source { font-size:10px; padding:1px 5px; border-radius:3px; background:#eee; color:#888; }
-.nf-entry-source.homebrew { background:rgba(180,100,20,0.15); color:#b46414; }
 .nf-results { position:absolute; top:100%; left:0; right:0; z-index:9999; background:#fff; border:1px solid #ccc; border-radius:4px; max-height:180px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,0.15); display:none; }
 .nf-result-item { display:flex; justify-content:space-between; padding:5px 8px; cursor:pointer; font-size:12px; border-bottom:1px solid #eee; }
 .nf-result-item:hover { background:#f0f0f0; }
@@ -142,61 +172,56 @@ class NpcForgePanel extends Application {
 .nf-sep { font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:#888; padding-bottom:4px; border-bottom:1px solid #eee; margin-top:4px; }
 </style>
 <div class="nf-tabs">
-  <button class="nf-tab ${this._activeTab==='create'?'active':''}" data-tab="create">Create</button>
-  <button class="nf-tab ${this._activeTab==='races'?'active':''}" data-tab="races">Races</button>
-  <button class="nf-tab ${this._activeTab==='classes'?'active':''}" data-tab="classes">Classes</button>
-  <button class="nf-tab ${this._activeTab==='settings'?'active':''}" data-tab="settings">Settings</button>
+  <button class="nf-tab ${this._activeTab==='create'?'active':''}" data-tab="create">${t("tabCreate")}</button>
+  <button class="nf-tab ${this._activeTab==='races'?'active':''}" data-tab="races">${t("tabRaces")}</button>
+  <button class="nf-tab ${this._activeTab==='classes'?'active':''}" data-tab="classes">${t("tabClasses")}</button>
+  <button class="nf-tab ${this._activeTab==='settings'?'active':''}" data-tab="settings">${t("tabSettings")}</button>
 </div>
 
 <div class="nf-panel ${this._activeTab==='create'?'active':''}" data-tab="create">
   <div class="nf-field" style="position:relative">
-    <label>Race <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
-    <input type="text" id="nf-race-search" placeholder="Search races..." autocomplete="off">
+    <label>${t("labelRace")} <span style="font-weight:normal;opacity:0.6">(${t("optional")})</span></label>
+    <input type="text" id="nf-race-search" placeholder="${t("searchRace")}" autocomplete="off">
     <div class="nf-results" id="nf-race-results"></div>
   </div>
   <div class="nf-field" style="position:relative">
-    <label>Background <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
-    <input type="text" id="nf-bg-search" placeholder="Search backgrounds..." autocomplete="off">
+    <label>${t("labelBackground")} <span style="font-weight:normal;opacity:0.6">(${t("optional")})</span></label>
+    <input type="text" id="nf-bg-search" placeholder="${t("searchBg")}" autocomplete="off">
     <div class="nf-results" id="nf-bg-results"></div>
   </div>
-  <div class="nf-field" style="position:relative">
-    <label>Occupation <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
-    <input type="text" id="nf-occ-search" placeholder="e.g. Apothecary, Guard..." autocomplete="off">
-    <div class="nf-results" id="nf-occ-results"></div>
-  </div>
   <div class="nf-field">
-    <label>Gender</label>
+    <label>${t("labelGender")}</label>
     <div class="nf-chips">
-      <span class="nf-chip selected" data-group="gender" data-value="">Random</span>
-      <span class="nf-chip" data-group="gender" data-value="male">Male</span>
-      <span class="nf-chip" data-group="gender" data-value="female">Female</span>
-      <span class="nf-chip" data-group="gender" data-value="non-binary">Non-binary</span>
+      <span class="nf-chip selected" data-group="gender" data-value="">${t("gRandom")}</span>
+      <span class="nf-chip" data-group="gender" data-value="male">${t("gMale")}</span>
+      <span class="nf-chip" data-group="gender" data-value="female">${t("gFemale")}</span>
+      <span class="nf-chip" data-group="gender" data-value="non-binary">${t("gNonBinary")}</span>
     </div>
   </div>
   <div class="nf-field">
-    <label>Age</label>
+    <label>${t("labelAge")}</label>
     <div class="nf-chips">
-      <span class="nf-chip" data-group="age" data-value="young">Young</span>
-      <span class="nf-chip selected" data-group="age" data-value="normal">Normal</span>
-      <span class="nf-chip" data-group="age" data-value="old">Old</span>
+      <span class="nf-chip" data-group="age" data-value="young">${t("aYoung")}</span>
+      <span class="nf-chip selected" data-group="age" data-value="normal">${t("aNormal")}</span>
+      <span class="nf-chip" data-group="age" data-value="old">${t("aOld")}</span>
     </div>
   </div>
   <div class="nf-field">
-    <label>Wealth</label>
+    <label>${t("labelWealth")}</label>
     <div class="nf-chips">
-      <span class="nf-chip" data-group="wealth" data-value="arm">Poor</span>
-      <span class="nf-chip" data-group="wealth" data-value="bescheiden">Modest</span>
-      <span class="nf-chip selected" data-group="wealth" data-value="normal">Normal</span>
-      <span class="nf-chip" data-group="wealth" data-value="wohlhabend">Wealthy</span>
-      <span class="nf-chip" data-group="wealth" data-value="aristokratisch">Noble</span>
+      <span class="nf-chip" data-group="wealth" data-value="poor">${t("wPoor")}</span>
+      <span class="nf-chip" data-group="wealth" data-value="modest">${t("wModest")}</span>
+      <span class="nf-chip selected" data-group="wealth" data-value="normal">${t("wNormal")}</span>
+      <span class="nf-chip" data-group="wealth" data-value="wealthy">${t("wWealthy")}</span>
+      <span class="nf-chip" data-group="wealth" data-value="noble">${t("wNoble")}</span>
     </div>
   </div>
   <div class="nf-field">
-    <label>Special visual wish <span style="font-weight:normal;opacity:0.6">(optional)</span></label>
-    <textarea id="nf-special-wish" placeholder="e.g. holds a torch, wears a blue cape..."></textarea>
+    <label>${t("labelWish")} <span style="font-weight:normal;opacity:0.6">(${t("optional")})</span></label>
+    <textarea id="nf-special-wish" placeholder="${t("wishPlaceholder")}"></textarea>
   </div>
   <div class="nf-status" id="nf-create-status"></div>
-  <button class="nf-btn nf-generate-btn">Generate NPC</button>
+  <button class="nf-btn nf-generate-btn">${t("btnGenerate")}</button>
 </div>
 
 <div class="nf-panel ${this._activeTab==='races'?'active':''}" data-tab="races">
@@ -205,34 +230,31 @@ class NpcForgePanel extends Application {
     Drop image or text file here, or click to browse
   </div>
   <div class="nf-field">
-    <label>Or paste text / description</label>
+    <label>${t("pasteRace")}</label>
     <textarea class="nf-import-textarea" rows="4" placeholder="Paste race description..."></textarea>
-    <button class="nf-btn" id="nf-import-text-btn" style="margin-top:4px">Import from text</button>
+    <button class="nf-btn" id="nf-import-text-btn" style="margin-top:4px">${t("importFromText")}</button>
   </div>
   <div class="nf-status" id="nf-races-status"></div>
-  <div class="nf-sep">Saved races (${races.length})</div>
+  <div class="nf-sep">${t("savedRaces", races.length)}</div>
   ${raceList}
 </div>
 
 <div class="nf-panel ${this._activeTab==='classes'?'active':''}" data-tab="classes">
   <div class="nf-field">
-    <label>Paste class description</label>
-    <textarea class="nf-class-textarea" rows="4" placeholder="Paste class or subclass..."></textarea>
-    <button class="nf-btn" id="nf-import-class-btn" style="margin-top:4px">Import class</button>
+    <label>${t("pasteClass")}</label>
+    <textarea class="nf-class-textarea" rows="4" placeholder="${t("pasteClass")}"></textarea>
+    <button class="nf-btn" id="nf-import-class-btn" style="margin-top:4px">${t("importClass")}</button>
   </div>
   <div class="nf-status" id="nf-classes-status"></div>
 </div>
 
 <div class="nf-panel ${this._activeTab==='settings'?'active':''}" data-tab="settings">
   <div class="nf-field">
-    <label>Anthropic / OpenRouter API Key</label>
+    <label>${t("labelAnthropicKey")}</label>
     <input type="password" id="nf-anthropic-key" placeholder="sk-ant-... or sk-or-...">
+    <div style="font-size:10px;color:#888;margin-top:3px">OpenRouter (sk-or-...) oder Anthropic direkt</div>
   </div>
-  <div class="nf-field">
-    <label>Image API Key (Google Gemini)</label>
-    <input type="password" id="nf-image-key" placeholder="AIza... (from aistudio.google.com)">
-  </div>
-  <button class="nf-btn" id="nf-save-settings" style="margin-top:8px">Save Settings</button>
+  <button class="nf-btn" id="nf-save-settings" style="margin-top:8px">${t("labelSaveSettings")}</button>
   <div class="nf-status" id="nf-settings-status"></div>
 </div>
 </div>`;
@@ -242,15 +264,12 @@ class NpcForgePanel extends Application {
     return $(div);
   }
 
-  getData() {
-    return {};
-  }
+  getData() { return {}; }
 
   activateListeners(html) {
     super.activateListeners(html);
     const root = html instanceof HTMLElement ? html : html[0];
 
-    // Tabs
     root.querySelectorAll(".nf-tab").forEach(tab => {
       tab.addEventListener("click", e => {
         this._activeTab = e.currentTarget.dataset.tab;
@@ -261,7 +280,6 @@ class NpcForgePanel extends Application {
       });
     });
 
-    // Chips
     root.querySelectorAll(".nf-chip").forEach(chip => {
       chip.addEventListener("click", e => {
         const group = e.currentTarget.dataset.group;
@@ -271,13 +289,12 @@ class NpcForgePanel extends Application {
       });
     });
 
-    // Search boxes
     this._setupSearch(root, "nf-race-search", "nf-race-results", q => {
       let races = [];
       try { races = JSON.parse(game.settings.get("npc-forge","raceDatabase")); } catch(e) {}
       return races.filter(r => r.name?.toLowerCase().includes(q.toLowerCase()))
         .map(r => `<div class="nf-result-item" data-id="${r.id}" data-type="race"><span>${r.name}</span><span style="color:#888;font-size:10px">${r.source||""}</span></div>`).join("")
-        || `<div style="padding:8px;color:#888;font-size:11px;text-align:center">No races found</div>`;
+        || `<div style="padding:8px;color:#888;font-size:11px;text-align:center">${t("noRaces")}</div>`;
     });
 
     this._setupSearch(root, "nf-bg-search", "nf-bg-results", async q => {
@@ -298,17 +315,9 @@ class NpcForgePanel extends Application {
           }
         } catch(e) {}
       }
-      return results.join("") || `<div style="padding:8px;color:#888;font-size:11px;text-align:center">No results</div>`;
+      return results.join("") || `<div style="padding:8px;color:#888;font-size:11px;text-align:center">${t("noResults")}</div>`;
     });
 
-    this._setupSearch(root, "nf-occ-search", "nf-occ-results", q => {
-      const common = ["Blacksmith","Innkeeper","Guard","Merchant","Farmer","Apothecary","Scholar","Sailor","Thief","Priest","Hunter","Herbalist","Cook","Scribe","Cartographer"];
-      return common.filter(o => o.toLowerCase().includes(q.toLowerCase()))
-        .map(o => `<div class="nf-result-item" data-name="${o}" data-type="occupation"><span>${o}</span></div>`).join("")
-        || "";
-    });
-
-    // Result clicks
     root.addEventListener("click", e => {
       const item = e.target.closest(".nf-result-item");
       if (!item) return;
@@ -317,25 +326,20 @@ class NpcForgePanel extends Application {
       const id = item.dataset.id;
       if (type==="race") { this._npcParams.raceId=id; this._npcParams.raceName=name; const inp=root.querySelector("#nf-race-search"); if(inp)inp.value=name; root.querySelector("#nf-race-results").style.display="none"; }
       else if (type==="background") { this._npcParams.background=name; const inp=root.querySelector("#nf-bg-search"); if(inp)inp.value=name; root.querySelector("#nf-bg-results").style.display="none"; }
-      else if (type==="occupation") { this._npcParams.occupation=name; const inp=root.querySelector("#nf-occ-search"); if(inp)inp.value=name; root.querySelector("#nf-occ-results").style.display="none"; }
     });
 
-    // Generate button
     root.querySelector(".nf-generate-btn")?.addEventListener("click", () => this._generateNPC(root));
 
-    // Import text
     root.querySelector("#nf-import-text-btn")?.addEventListener("click", () => {
       const text = root.querySelector(".nf-import-textarea")?.value?.trim();
       if (text) this._importFromText(text, root);
     });
 
-    // Import class
     root.querySelector("#nf-import-class-btn")?.addEventListener("click", () => {
       const text = root.querySelector(".nf-class-textarea")?.value?.trim();
       if (text) this._importFromText(text, root, "class");
     });
 
-    // Dropzone
     const dz = root.querySelector("#nf-dropzone");
     if (dz) {
       dz.addEventListener("dragover", e => { e.preventDefault(); dz.style.borderColor="#6b5acd"; });
@@ -344,12 +348,11 @@ class NpcForgePanel extends Application {
       dz.addEventListener("click", () => { const inp=document.createElement("input"); inp.type="file"; inp.multiple=true; inp.accept=".txt,.png,.jpg,.jpeg,.webp"; inp.onchange=()=>this._handleFiles(inp.files,root); inp.click(); });
     }
 
-    // Delete race
     root.addEventListener("click", async e => {
       const del = e.target.closest(".npcforge-entry-delete");
       if (!del) return;
       e.stopPropagation();
-      const id = del.closest(".nf-entry")?.dataset.id;
+      const id = del.closest("[data-id]")?.dataset.id;
       if (id) {
         let db = [];
         try { db = JSON.parse(game.settings.get("npc-forge","raceDatabase")); } catch(e) {}
@@ -358,21 +361,15 @@ class NpcForgePanel extends Application {
       }
     });
 
-    // Settings save
     root.querySelector("#nf-save-settings")?.addEventListener("click", async () => {
       const k = root.querySelector("#nf-anthropic-key")?.value;
-      const ik = root.querySelector("#nf-image-key")?.value;
       if (k) await game.settings.set("npc-forge","anthropicKey",k);
-      if (ik) await game.settings.set("npc-forge","imageApiKey",ik);
-      this._setStatus(root, "Settings saved!", "success", "nf-settings-status");
+      this._setStatus(root, t("settingsSaved"), "success", "nf-settings-status");
     });
 
-    // Load saved settings into fields
     try {
       const savedKey = game.settings.get("npc-forge","anthropicKey");
-      const savedImageKey = game.settings.get("npc-forge","imageApiKey");
       if (savedKey) { const el=root.querySelector("#nf-anthropic-key"); if(el)el.value=savedKey; }
-      if (savedImageKey) { const el=root.querySelector("#nf-image-key"); if(el)el.value=savedImageKey; }
     } catch(e) {}
   }
 
@@ -414,38 +411,18 @@ class NpcForgePanel extends Application {
     this._setStatus(root, "Step 1/2: Extracting base traits...", "running", "nf-races-status");
     try {
       const part1 = await this._callClaude(
-        `D&D 5e race extractor. Return ONLY valid JSON, no markdown. Extract ONLY these fields:
-{"name":"","source":"","description":"","appearance":{"description":"","inspiration":"","skinColors":[],"eyeColors":[],"heightRange":"","distinctiveFeatures":[]},"traits":{"creatureType":"","size":"","speed":{"walk":30,"swim":0,"fly":0},"abilityScoreIncreases":"","typicalAbilityScores":[],"age":{"adulthood":0,"lifespan":0},"alignment":"","languages":[],"darkvision":0}}`,
-        `Extract ONLY the base stats from this race description. Return ONLY JSON:\n\n${text}`,
+        `D&D 5e race extractor. Return ONLY valid JSON, no markdown.`,
+        `Extract race data as JSON with fields: name, source, description, appearance, traits (creatureType, size, speed, abilityScoreIncreases, languages, darkvision), id will be added later. Return ONLY JSON:\n\n${text}`,
         2000
       );
-
-      this._setStatus(root, "Step 2/2: Extracting features & culture...", "running", "nf-races-status");
-
       const part2 = await this._callClaude(
-        `D&D 5e race extractor. Return ONLY valid JSON, no markdown. Extract ONLY these fields:
-{"racialFeatures":[{"name":"","description":"","mechanics":""}],"subtypes":[{"name":"","description":"","features":[{"name":"","description":""}]}],"culture":{"homeland":"","patronDeity":"","values":[],"habits":[],"likes":[],"dislikes":[]},"names":{"examples":[],"naming_conventions":""},"npcHints":{"personalityTraits":[],"occupations":[],"portraitPromptBase":""}}`,
-        `Extract ONLY the racial features, subtypes, culture, names and NPC hints from this race description. Return ONLY JSON:\n\n${text}`,
+        `D&D 5e race extractor. Return ONLY valid JSON, no markdown.`,
+        `Extract racial features, culture, names and NPC hints from this race description as JSON with fields: racialFeatures (array), culture, names (examples array, naming_conventions), npcHints (personalityTraits, occupations). Return ONLY JSON:\n\n${text}`,
         2000
       );
-
       const p1 = JSON.parse(part1.replace(/```json|```/g,"").trim());
       const p2 = JSON.parse(part2.replace(/```json|```/g,"").trim());
-
-      const data = {
-        ...p1,
-        traits: {
-          ...p1.traits,
-          racialFeatures: p2.racialFeatures || []
-        },
-        subtypes: p2.subtypes || [],
-        culture: p2.culture || {},
-        names: p2.names || {},
-        npcHints: p2.npcHints || {},
-        id: foundry.utils.randomID(),
-        isHomebrew: true
-      };
-
+      const data = { ...p1, racialFeatures: p2.racialFeatures||[], culture: p2.culture||{}, names: p2.names||{}, npcHints: p2.npcHints||{}, id: foundry.utils.randomID(), isHomebrew: true };
       let db = [];
       try { db = JSON.parse(game.settings.get("npc-forge","raceDatabase")); } catch(e) {}
       db.push(data);
@@ -473,7 +450,7 @@ class NpcForgePanel extends Application {
       }
       const data = await response.json();
       const text = isOpenRouter ? data.choices?.[0]?.message?.content : data.content?.[0]?.text;
-      const card = JSON.parse(text.replace(/\`\`\`json|\`\`\`/g,"").trim());
+      const card = JSON.parse(text.replace(/```json|```/g,"").trim());
       card.id = foundry.utils.randomID();
       card.isHomebrew = true;
       let db = [];
@@ -516,18 +493,21 @@ class NpcForgePanel extends Application {
         try { db = JSON.parse(game.settings.get("npc-forge","raceDatabase")); } catch(e) {}
         raceCard = db.find(r => r.id === this._npcParams.raceId);
       }
+
       const specialWish = root.querySelector("#nf-special-wish")?.value?.trim() || null;
       const wealth = this._npcParams.wealth || "normal";
       const age = this._npcParams.age || "normal";
       const gender = this._npcParams.gender || null;
+      const outputLang = t("outputLang"); // "Deutsch" or "English"
+      const lang = getNFLang();
 
-      this._setStatus(root, "Step 1/3: Generating NPC...", "running", "nf-create-status");
+      this._setStatus(root, t("step1"), "running", "nf-create-status");
 
       const raceDesc = raceCard
-        ? `Race: ${raceCard.name}. ${raceCard.appearance?.description||""}. Colors: ${(raceCard.appearance?.skinColors||[]).join(", ")}. Features: ${(raceCard.appearance?.distinctiveFeatures||[]).join(", ")}.`
-        : "Race: Human";
+        ? `Race: ${raceCard.name}. ${raceCard.appearance?.description||""}. Appearance features: ${(raceCard.appearance?.distinctiveFeatures||[]).join(", ")||"humanoid"}. Naming conventions: ${raceCard.names?.naming_conventions||"fantasy names"}. Name examples: ${(raceCard.names?.examples||[]).slice(0,6).join(", ")||"none"}.`
+        : "Race: Human. Standard humanoid appearance.";
 
-      // --- NAME DIVERSITY: random seed + style per generation ---
+      // Name diversity seeds
       const nameSeeds = [
         "Vorlan","Thisbe","Kreth","Umara","Belwick","Saoirse","Dravix","Fennick",
         "Zorath","Lirien","Casmyr","Ondra","Brix","Tessavel","Gorruk","Maeven",
@@ -537,97 +517,101 @@ class NpcForgePanel extends Application {
       ];
       const nameStyles = [
         "one syllable, blunt and memorable",
-        "two syllables, sounds earthy and common",
-        "two syllables, sounds exotic or foreign",
-        "three syllables, sounds noble or ancient",
-        "unusual consonant cluster, hard to forget",
-        "ends in a vowel, sounds melodic",
-        "starts with a rare letter (X, Z, Q, W, Y)",
+        "two syllables, earthy and common",
+        "two syllables, exotic or foreign-sounding",
+        "three syllables, noble or ancient",
+        "unusual consonant cluster",
+        "ends in a vowel, melodic",
+        "starts with rare letter (X, Z, Q, W, Y)",
         "sounds like a nickname or trade name",
-        "rhymes internally (e.g. Zivix, Tallball)",
-        "compound of two short words or roots"
+        "compound of two short roots"
       ];
       const nameSeed = nameSeeds[Math.floor(Math.random() * nameSeeds.length)];
       const nameStyle = nameStyles[Math.floor(Math.random() * nameStyles.length)];
 
-      const prompt = `Generate a D&D 5e NPC. Return ONLY valid JSON with exactly these fields: name, race, class, occupation, background, gender, age, alignment, personality (array of 2-3 traits), ideal, bond, flaw, appearance (object: height, build, skinColor, eyeColor, hairOrFeatures, clothing, distinguishingFeatures), stats (object: CR, HP, AC, STR, DEX, CON, INT, WIS, CHA, speed, skills array, languages array), equipment (array), backstory, portraitPrompt.
+      const wealthDesc = {
+        poor: lang==="de" ? "arm, zerlumpt, abgenutzte Kleidung" : "poor, ragged, worn clothing",
+        modest: lang==="de" ? "bescheiden, einfache saubere Kleidung" : "modest, simple clean clothing",
+        normal: lang==="de" ? "durchschnittlich, normale Kleidung" : "average, normal clothing",
+        wealthy: lang==="de" ? "wohlhabend, gute Kleidung, Schmuck" : "wealthy, fine clothing, jewelry",
+        noble: lang==="de" ? "adelig, luxuriöse Kleidung, edle Accessoires" : "noble, luxurious clothing, fine accessories"
+      }[wealth] || wealth;
+
+      const ageDesc = {
+        young: lang==="de" ? "jung (Teenager bis Mitte 20)" : "young (teens to mid-20s)",
+        normal: lang==="de" ? "mittleres Alter (30er bis 50er)" : "middle-aged (30s to 50s)",
+        old: lang==="de" ? "alt (60er und älter)" : "old (60s and older)"
+      }[age] || age;
+
+      const prompt = `You are a D&D 5e NPC generator. Generate a complete NPC and return ONLY valid JSON.
+
+OUTPUT LANGUAGE: ${outputLang}
+IMPORTANT: ALL text fields (name, backstory, appearance descriptions, personality, ideal, bond, flaw, occupation) MUST be written in ${outputLang}. The name must sound natural and fitting for the race in ${outputLang}-speaking regions or fantasy equivalents.
 
 ${raceDesc}
-Occupation: ${this._npcParams.occupation||"random - pick something unexpected and specific"}
-Background: ${this._npcParams.background||"random"}
-Gender: ${gender||"random"}
-Age: ${age} (young=teens-20s, normal=30s-50s, old=60s+)
-Wealth: ${wealth} (arm=poor/ragged, bescheiden=modest, normal=average, wohlhabend=wealthy, aristokratisch=noble/luxury)
-${specialWish ? `Special visual wish: ${specialWish}` : ""}
 
-=== NAME RULES - CRITICAL ===
-The name MUST be completely unique and creative. DO NOT use these overused fantasy names or anything similar: Aldric, Mira, Gareth, Elena, Theron, Sera, Dorin, Lyra, Vane, Aria, Kael, Zara, Elden, Nora, Bran, Talia, Orin, Lena, Cedric, Isolde, Rowan, Quinn, Finn, Aiden, Jasper, Evelyn, Raven, Silver, Storm, Drake.
-Style requirement for the name: ${nameStyle}
-Creative seed (use ONLY as loose inspiration for sound/feel, do NOT copy): "${nameSeed}"
-The name must feel fresh, specific, and alive - not a generic RPG placeholder.
+Parameters:
+- Gender: ${gender || (lang==="de" ? "zufällig" : "random")}
+- Age: ${ageDesc}
+- Wealth: ${wealthDesc}
+${specialWish ? `- Special personal wishes (incorporate into occupation/backstory/appearance as appropriate): ${specialWish}` : ""}
+
+=== NAME RULES ===
+- Name MUST be unique and creative in ${outputLang} style
+- Style: ${nameStyle}
+- Inspiration seed (sound only, do NOT copy): "${nameSeed}"
+- FORBIDDEN generic names: Aldric, Mira, Gareth, Elena, Theron, Sera, Dorin, Lyra, Vane, Aria, Kael, Zara, Elden, Nora, Bran, Talia, Orin, Lena, Cedric, Isolde, Rowan, Quinn, Finn, Silver, Storm, Drake
+- For German output: names may use German phonetics (e.g. Schimmer, Glut, Flosse, Fluss) or fantasy variants thereof
 === END NAME RULES ===
 
-Make the NPC's personality, backstory, and appearance feel like a real person with quirks - avoid generic archetypes. Invent unexpected details.
-Make portraitPrompt very detailed: describe exact physical features, specific clothing texture and colors matching wealth level, lighting, art style (fantasy portrait, painterly illustration, detailed).`;
+Return JSON with exactly these fields:
+{
+  "name": "",
+  "race": "",
+  "class": "",
+  "occupation": "",
+  "background": "",
+  "gender": "",
+  "age": "",
+  "alignment": "",
+  "personality": [],
+  "ideal": "",
+  "bond": "",
+  "flaw": "",
+  "appearance": {
+    "height": "", "build": "", "skinColor": "", "eyeColor": "",
+    "hairOrFeatures": "", "clothing": "", "distinguishingFeatures": ""
+  },
+  "stats": {
+    "CR": 0, "HP": 10, "AC": 10,
+    "STR": 10, "DEX": 10, "CON": 10, "INT": 10, "WIS": 10, "CHA": 10,
+    "speed": 30, "skills": [], "languages": []
+  },
+  "equipment": [],
+  "backstory": "",
+  "portraitPrompt": ""
+}`;
 
-      const raw = await this._callClaude("You are a D&D 5e NPC generator. Return only valid JSON, no markdown, no preamble.", prompt, 2500);
+      const raw = await this._callClaude(
+        `You are a D&D 5e NPC generator. Return only valid JSON, no markdown, no preamble. All text in ${outputLang}.`,
+        prompt, 2500
+      );
       const npcData = JSON.parse(raw.replace(/```json|```/g,"").trim());
 
-      this._setStatus(root, "Step 2/3: Generating portrait...", "running", "nf-create-status");
-      let portraitPath = "icons/svg/mystery-man.svg";
-      try {
-        const imageKey = game.settings.get("npc-forge","imageApiKey");
-        if (imageKey) {
-          let imageDataUrl;
+      this._setStatus(root, t("step2"), "running", "nf-create-status");
 
-          // Use Gemini Flash Image Generation (free tier)
-          const ir = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${imageKey}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [{ parts: [{ text: npcData.portraitPrompt + ", fantasy portrait style, highly detailed, painterly illustration, square format" }] }],
-                generationConfig: { responseModalities: ["IMAGE", "TEXT"] }
-              })
-            }
-          );
-          const id = await ir.json();
-          console.log("NPC Forge | Gemini response:", JSON.stringify(id).substring(0, 400));
-
-          if (id.error) {
-            console.warn("NPC Forge | Gemini error:", id.error.message);
-          } else {
-            const imgPart = id.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-            if (imgPart?.inlineData?.data) {
-              imageDataUrl = `data:${imgPart.inlineData.mimeType || "image/png"};base64,${imgPart.inlineData.data}`;
-            }
-          }
-
-          if (imageDataUrl && !imageDataUrl.includes("undefined")) {
-            const res = await fetch(imageDataUrl);
-            const blob = await res.blob();
-            const fname = `${npcData.name.toLowerCase().replace(/[^a-z0-9]+/g,"-")}-${Date.now()}.png`;
-            const file = new File([blob], fname, { type: "image/png" });
-            try { await (foundry.applications.apps.FilePicker?.implementation || FilePicker).createDirectory("data", "npc-forge"); } catch(e) {}
-            const up = await (foundry.applications.apps.FilePicker?.implementation || FilePicker).upload("data", "npc-forge", file, {});
-            portraitPath = up.path;
-          }
-        }
-      } catch(e) { console.warn("NPC Forge | Portrait generation failed:", e.message); }
-
-      this._setStatus(root, "Step 3/3: Creating actor...", "running", "nf-create-status");
       const actor = await Actor.create({
         name: npcData.name,
         type: "npc",
-        img: portraitPath,
+        img: "icons/svg/mystery-man.svg",
         system: {
           details: {
             biography: {
               value: `<p>${npcData.backstory||""}</p>
-<p><b>Occupation:</b> ${npcData.occupation||""}</p>
-<p><b>Ideal:</b> ${npcData.ideal||""} &nbsp;|&nbsp; <b>Bond:</b> ${npcData.bond||""} &nbsp;|&nbsp; <b>Flaw:</b> ${npcData.flaw||""}</p>
-${npcData.appearance ? `<p><b>Appearance:</b> ${npcData.appearance.height||""}, ${npcData.appearance.build||""}, ${npcData.appearance.skinColor||""} skin, ${npcData.appearance.eyeColor||""} eyes. ${npcData.appearance.distinguishingFeatures||""}</p><p><b>Clothing:</b> ${npcData.appearance.clothing||""}</p>` : ""}`
+<p><b>${lang==="de"?"Beruf":"Occupation"}:</b> ${npcData.occupation||""}</p>
+<p><b>${lang==="de"?"Ideal":"Ideal"}:</b> ${npcData.ideal||""} &nbsp;|&nbsp; <b>${lang==="de"?"Bindung":"Bond"}:</b> ${npcData.bond||""} &nbsp;|&nbsp; <b>${lang==="de"?"Schwäche":"Flaw"}:</b> ${npcData.flaw||""}</p>
+${npcData.appearance ? `<p><b>${lang==="de"?"Aussehen":"Appearance"}:</b> ${npcData.appearance.height||""}, ${npcData.appearance.build||""}, ${npcData.appearance.skinColor||""}, ${npcData.appearance.eyeColor||""} ${lang==="de"?"Augen":"eyes"}. ${npcData.appearance.distinguishingFeatures||""}</p><p><b>${lang==="de"?"Kleidung":"Clothing"}:</b> ${npcData.appearance.clothing||""}</p>` : ""}
+${npcData.personality?.length ? `<p><b>${lang==="de"?"Persönlichkeit":"Personality"}:</b> ${npcData.personality.join(", ")}</p>` : ""}`
             },
             race: npcData.race || "",
             background: npcData.background || "",
@@ -651,7 +635,7 @@ ${npcData.appearance ? `<p><b>Appearance:</b> ${npcData.appearance.height||""}, 
         }
       });
       actor.sheet.render(true);
-      this._setStatus(root, `✓ "${npcData.name}" created!`, "success", "nf-create-status");
+      this._setStatus(root, t("done", npcData.name), "success", "nf-create-status");
     } catch(e) {
       console.error("NPC Forge error:", e);
       this._setStatus(root, `Error: ${e.message}`, "error", "nf-create-status");
@@ -666,9 +650,7 @@ ${npcData.appearance ? `<p><b>Appearance:</b> ${npcData.appearance.height||""}, 
       el = root.querySelector(`#${statusId}`);
     } else {
       const activePanel = root.querySelector(".nf-panel.active");
-      if (activePanel) {
-        el = activePanel.querySelector(".nf-status");
-      }
+      if (activePanel) el = activePanel.querySelector(".nf-status");
     }
     if (!el) el = root.querySelector(".nf-status");
     if (!el) return;
